@@ -507,14 +507,23 @@ function formatConditionBox(inner, rawText) {
   const foundCount = CONDITION_MARKERS.filter(mk => rawText.includes(mk)).length;
   if (foundCount < 2) return null;
   if (/\([가나다라마]\)\s*~/.test(rawText)) return null;
-  const parts = inner.split(/(?=\([가나다라마]\))/).map(s => s.trim()).filter(Boolean);
+  // "이 9개의 숫자 중 다음 조건을 만족시키도록..." 처럼 첫 (가)/(나) 앞에
+  // 붙어 있는 도입부 문장은 조건 목록 자체가 아니라 박스 바깥에 있어야 할
+  // 일반 문장이다 — 마커 앞부분을 split에 포함시키면 그 도입부까지 통째로
+  // 박스 안에 들어가 버려서(실제 파일로 확인) 박스가 이상하게 커 보였다.
+  // formatBogiBox의 prefix 처리와 동일한 방식으로 분리.
+  const markerIdx = inner.search(/\([가나다라마]\)/);
+  if (markerIdx === -1) return null;
+  const prefix = inner.slice(0, markerIdx).trim();
+  const parts = inner.slice(markerIdx).split(/(?=\([가나다라마]\))/).map(s => s.trim()).filter(Boolean);
   if (parts.length < 2) return null;
   const substantiveCount = parts.filter(p => {
     const stripped = stripTags(p).replace(/^\([가나다라마]\)/, '').replace(/[,.\s]/g, '');
     return stripped.length >= 2;
   }).length;
   if (substantiveCount < parts.length - 1) return null;
-  return `<div class="hwpCondBox">${parts.map(p => `<p>${p}</p>`).join('')}</div>`;
+  const box = `<div class="hwpCondBox">${parts.map(p => `<p>${p}</p>`).join('')}</div>`;
+  return prefix ? `<p>${prefix}</p>${box}` : box;
 }
 
 async function hwpBodyXmlToHtml(xml, entry) {
@@ -872,55 +881,18 @@ document.getElementById('gradeMission').addEventListener('input', () => {
   document.getElementById('gradeMission').dataset.auto = 'false';
 });
 
-// ---------- 3. A4 2단 페이지 생성 (실제 렌더링 높이 기준, 다단당 최대 2문제) ----------
+// ---------- 3. A4 2단 페이지 생성 (한 다단에 문제 1개씩만) ----------
 const MB_PAGE_W_MM = 210, MB_PAGE_H_MM = 297;
 const MB_CONTENT_TOP_MM = 26, MB_CONTENT_BOTTOM_MM = 18, MB_CONTENT_SIDE_MM = 16;
 const MB_COL_GAP_MM = 10;
-// 한 다단에 문제가 2개 들어갈 때 두 문제 사이 세로 간격 — 너무 붙어 보이지
-// 않도록 여유 있게 잡음. 페이지네이션 높이 계산(paginateQuestions)과 실제
-// 다운로드 HTML의 .clQBlock CSS가 같은 상수를 써야 "2문제가 실제로 들어갈
-// 수 있는지" 판단과 "실제로 보이는 간격"이 어긋나지 않는다.
+// .clQBlock 아래 여백 — 한 다단에 문제가 1개뿐이라 다른 문제와 부딪힐 일은
+// 없지만, 박스형 문제(조건박스/보기박스)와 페이지 하단 사이 여백으로 쓰임.
 const MB_Q_GAP_MM = 10;
 
-function mmToPxRatio() {
-  const d = document.createElement('div');
-  d.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;top:0;width:100mm;';
-  document.body.appendChild(d);
-  const px = d.getBoundingClientRect().width;
-  d.remove();
-  return px / 100;
-}
-
-function paginateQuestions(blocksHtml, colWidthMm, colHeightMm) {
-  const ratio = mmToPxRatio();
-  const colWidthPx = colWidthMm * ratio;
-  const colHeightPx = colHeightMm * ratio;
-
-  const stage = document.createElement('div');
-  stage.style.cssText = `position:absolute;visibility:hidden;left:-9999px;top:0;width:${colWidthPx}px;font-family:'Noto Sans KR',sans-serif;font-size:12.5px;line-height:1.6;`;
-  document.body.appendChild(stage);
-  const heights = blocksHtml.map(html => {
-    stage.innerHTML = html;
-    try {
-      renderMathInElement(stage, { delimiters: [{ left: '\\(', right: '\\)', display: false }], throwOnError: false });
-    } catch (e) {}
-    return stage.getBoundingClientRect().height;
-  });
-  stage.remove();
-
-  const gapPx = MB_Q_GAP_MM * ratio;
-  const columns = [];
-  let i = 0;
-  while (i < blocksHtml.length) {
-    const col = [blocksHtml[i]];
-    let h = heights[i];
-    i++;
-    if (i < blocksHtml.length && h + gapPx + heights[i] <= colHeightPx) {
-      col.push(blocksHtml[i]);
-      i++;
-    }
-    columns.push(col);
-  }
+// 한 다단에 문제를 딱 1개씩만 배치 — 문제 길이에 따라 2개까지 채우던 이전
+// 방식(높이 실측 기반)을 버리고, 페이지당 2단(=2문제)으로 단순 고정.
+function paginateQuestions(blocksHtml) {
+  const columns = blocksHtml.map(html => [html]);
   const pages = [];
   for (let c = 0; c < columns.length; c += 2) pages.push([columns[c], columns[c + 1] || []]);
   return pages;
@@ -949,10 +921,11 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (!blocks.length) throw new Error('선택된 문제가 없습니다.');
     const colWidthMm = (MB_PAGE_W_MM - MB_CONTENT_SIDE_MM * 2 - MB_COL_GAP_MM) / 2;
     const colHeightMm = MB_PAGE_H_MM - MB_CONTENT_TOP_MM - MB_CONTENT_BOTTOM_MM;
-    const pages = paginateQuestions(blocks, colWidthMm, colHeightMm);
-    downloadClinicHtml(title, pages, colWidthMm, colHeightMm);
+    const pages = paginateQuestions(blocks);
+    const vol = document.getElementById('volNum').value || '1';
+    downloadClinicHtml(title, pages, colWidthMm, colHeightMm, formattedDate(), vol);
     localStorage.setItem('clinicmaker_lastVol', document.getElementById('volNum').value || '1');
-    hint.textContent = `완료 — ${blocks.length}문제, ${pages.length}페이지`;
+    hint.textContent = `완료 — ${blocks.length}문제, 문제 ${pages.length}페이지 (+앞표지/메모란/뒤표지 각 1페이지)`;
     hint.className = 'hint ok';
   } catch (e) {
     hint.textContent = '실패: ' + e.message;
@@ -963,8 +936,8 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   }
 });
 
-function downloadClinicHtml(title, pages, colWidthMm, colHeightMm) {
-  const pagesHtml = pages.map((page, pi) => `
+function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, volText) {
+  const questionPagesHtml = pages.map((page, pi) => `
     <section class="clSheet">
       <div class="clHead">${escapeHtml(title)}</div>
       <div class="clBody">
@@ -973,13 +946,46 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm) {
       <div class="clFoot">${pi + 1} / ${pages.length}</div>
     </section>`).join('\n');
 
+  // 앞표지 — 제목/회차/출제일을 크게 보여주고, 이름/반을 직접 적을 수 있게
+  // 빈 칸을 남겨둔다(다른 도구들처럼 학생 이름을 코드에 미리 채워넣지 않음).
+  const frontCoverHtml = `
+    <section class="clSheet clCover">
+      <div class="ccKicker">MATH CLINIC WORKBOOK</div>
+      <h1 class="ccTitle">MATHY<br>YURI'S<br>CLINIC</h1>
+      <div class="ccRule"></div>
+      <div class="ccVol">Vol. ${escapeHtml(volText)}</div>
+      <div class="ccDate">${escapeHtml(dateText)}</div>
+      <div class="ccFields">
+        <div class="ccField"><span class="ccFieldLabel">이름</span><span class="ccFieldLine"></span></div>
+        <div class="ccField"><span class="ccFieldLabel">반</span><span class="ccFieldLine"></span></div>
+      </div>
+    </section>`;
+
+  // 뒤표지 — 앞표지와 짝을 이루는 클로징 페이지.
+  const backCoverHtml = `
+    <section class="clSheet clCover clCoverBack">
+      <div class="ccBackMark">MATHY YURI'S<br>CLINIC</div>
+      <div class="ccBackSub">Vol. ${escapeHtml(volText)} · ${escapeHtml(dateText)}</div>
+      <div class="ccBackNote">오늘도 수고했어요.</div>
+    </section>`;
+
+  // 여유분 메모란 — 문제 풀며 쓸 계산/오답 정리용 여백 페이지.
+  const memoLines = Array.from({ length: 24 }).map(() => '<div class="clMemoLine"></div>').join('');
+  const memoPageHtml = `
+    <section class="clSheet">
+      <div class="clHead">${escapeHtml(title)} — MEMO</div>
+      <div class="clMemoBody">${memoLines}</div>
+    </section>`;
+
   const html = `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtml(title)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;0,900&family=Noto+Serif+KR:wght@400;700;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
 <style>
 :root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#FBF8F1;--mint-deep:#3E8F79;}
 *{box-sizing:border-box}
@@ -990,7 +996,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 .clCol{border-left:1px solid var(--gold-line);padding-left:${MB_COL_GAP_MM / 2}mm;min-width:0}
 .clCol:first-child{border-left:none;padding-left:0}
 .clQBlock{break-inside:avoid;margin-bottom:${MB_Q_GAP_MM}mm;font-size:12.5px;line-height:1.6}
-.clQNum{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--cream);font-weight:800;font-size:11px;margin-bottom:2mm}
+.clQNum{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--cream);font-weight:800;font-size:16px;margin-bottom:2.5mm}
 .clQBody p{margin:0 0 2mm}
 .clQBody img{max-width:100%;height:auto;display:block;margin:2mm auto}
 .clQBody table{border-collapse:collapse;margin:2mm 0}
@@ -1000,12 +1006,113 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 .hwpBogi,.hwpCondBox{border:1.1px solid var(--ink);border-radius:2px;padding:2mm 3mm;margin:2mm 0;font-size:11.5px}
 .hwpRectBox{border:1px solid var(--gold-line);padding:1.5mm 2.5mm;margin:1.5mm 0}
 .clFoot{position:absolute;bottom:8mm;left:0;right:0;text-align:center;font-size:10px;color:rgba(26,26,26,.5)}
-.printBtn{position:fixed;top:16px;right:16px;background:var(--ink);color:#fff;border:none;padding:10px 18px;border-radius:6px;font-weight:700;cursor:pointer;z-index:10}
-@media print{.printBtn{display:none}body{background:#fff;padding:0}.clSheet{box-shadow:none;margin:0}}
+
+/* ---- 표지 ---- */
+.clCover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1.5px solid var(--gold);outline:1px solid var(--gold);outline-offset:-6mm}
+.ccKicker{font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:11px;letter-spacing:.28em;color:var(--gold)}
+.ccTitle{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:46px;line-height:1.15;color:var(--ink);margin:8mm 0}
+.ccRule{width:26mm;height:2px;background:var(--gold);margin:2mm 0 6mm}
+.ccVol{font-family:'Noto Serif KR',serif;font-weight:700;font-size:15px;color:var(--ink)}
+.ccDate{font-size:11px;color:rgba(26,26,26,.6);margin-top:2mm}
+.ccFields{margin-top:16mm;display:flex;gap:14mm}
+.ccField{display:flex;align-items:baseline;gap:3mm}
+.ccFieldLabel{font-size:11px;color:rgba(26,26,26,.6);font-weight:700}
+.ccFieldLine{display:inline-block;width:34mm;border-bottom:1px solid var(--ink)}
+.ccBackMark{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:24px;line-height:1.3;color:var(--ink)}
+.ccBackSub{font-size:11px;color:rgba(26,26,26,.55);margin-top:4mm;letter-spacing:.04em}
+.ccBackNote{font-family:'Noto Serif KR',serif;font-size:13px;color:var(--gold);margin-top:14mm}
+
+/* ---- 메모란 ---- */
+.clMemoBody{display:flex;flex-direction:column;gap:9mm;padding-top:4mm}
+.clMemoLine{border-bottom:1px solid var(--gold-line);height:1px}
+
+.exportBar{position:fixed;top:16px;right:16px;z-index:999;display:flex;gap:8px}
+.exportBar button{background:var(--ink);color:var(--cream);border:none;padding:10px 18px;border-radius:6px;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.28)}
+.exportBar button:hover:not(:disabled){background:var(--mint-deep)}
+.exportBar button:disabled{opacity:.6;cursor:default}
+@media print{.exportBar{display:none}body{background:#fff;padding:0}.clSheet{box-shadow:none;margin:0;page-break-after:always}}
+@page{size:A4;margin:0}
 </style></head><body>
-<button class="printBtn" onclick="window.print()">인쇄 / PDF 저장</button>
-${pagesHtml}
-<script>document.addEventListener('DOMContentLoaded',()=>{renderMathInElement(document.body,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});});<\/script>
+<div class="exportBar">
+  <button type="button" id="saveImgBtn">지금 화면 이미지로 저장</button>
+  <button type="button" id="savePdfBtn">여백없는 PDF로 저장</button>
+</div>
+${frontCoverHtml}
+${questionPagesHtml}
+${memoPageHtml}
+${backCoverHtml}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function tryRender() {
+    if (window.renderMathInElement) {
+      renderMathInElement(document.body, { delimiters: [{ left: '\\\\(', right: '\\\\)', display: false }, { left: '\\\\[', right: '\\\\]', display: true }], throwOnError: false });
+    } else {
+      setTimeout(tryRender, 100);
+    }
+  }
+  tryRender();
+
+  // 브라우저 인쇄(Ctrl+P)는 배경 그래픽을 켜지 않으면 색이 다 날아가는
+  // 문제가 있어서, html2canvas로 각 페이지를 실제 픽셀 이미지로 찍은 뒤
+  // 그 이미지를 그대로 PDF에 붙이는 방식으로 저장한다 — 인쇄 대화상자를
+  // 거치지 않으니 배경색/여백이 항상 그대로 남는다(studentnote.html 오답
+  // 노트 내보내기와 동일한 방식).
+  var clSheets = [...document.querySelectorAll('.clSheet')];
+  async function captureSheet(el) {
+    return await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+  }
+  var exportFileBase = ${JSON.stringify(title.replace(/[\\\/:*?"<>|]/g, '_'))};
+  var saveImgBtn = document.getElementById('saveImgBtn');
+  var savePdfBtn = document.getElementById('savePdfBtn');
+  if (saveImgBtn) saveImgBtn.addEventListener('click', async function () {
+    saveImgBtn.disabled = true;
+    var orig = saveImgBtn.textContent;
+    saveImgBtn.textContent = '캡처 중...';
+    try {
+      var canvas = await captureSheet(clSheets[0]);
+      var a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = exportFileBase + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert('이미지 저장 실패: ' + e.message);
+    } finally {
+      saveImgBtn.disabled = false;
+      saveImgBtn.textContent = orig;
+    }
+  });
+  if (savePdfBtn) savePdfBtn.addEventListener('click', async function () {
+    savePdfBtn.disabled = true;
+    var orig = savePdfBtn.textContent;
+    try {
+      var jsPDFCtor = (window.jspdf && window.jspdf.jsPDF);
+      if (!jsPDFCtor) throw new Error('PDF 라이브러리를 불러오지 못했습니다');
+      var pageW = 210;
+      var pdf = null;
+      for (var i = 0; i < clSheets.length; i++) {
+        savePdfBtn.textContent = '캡처 중... (' + (i + 1) + '/' + clSheets.length + ')';
+        var canvas = await captureSheet(clSheets[i]);
+        var imgData = canvas.toDataURL('image/jpeg', 0.95);
+        var pageH = pageW * (canvas.height / canvas.width);
+        if (!pdf) {
+          pdf = new jsPDFCtor({ orientation: 'portrait', unit: 'mm', format: [pageW, pageH] });
+        } else {
+          pdf.addPage([pageW, pageH], 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
+      }
+      pdf.save(exportFileBase + '.pdf');
+    } catch (e) {
+      alert('PDF 저장 실패: ' + e.message);
+    } finally {
+      savePdfBtn.disabled = false;
+      savePdfBtn.textContent = orig;
+    }
+  });
+});
+<\/script>
 </body></html>`;
 
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
