@@ -876,6 +876,11 @@ document.getElementById('gradeMission').addEventListener('input', () => {
 const MB_PAGE_W_MM = 210, MB_PAGE_H_MM = 297;
 const MB_CONTENT_TOP_MM = 26, MB_CONTENT_BOTTOM_MM = 18, MB_CONTENT_SIDE_MM = 16;
 const MB_COL_GAP_MM = 10;
+// 한 다단에 문제가 2개 들어갈 때 두 문제 사이 세로 간격 — 너무 붙어 보이지
+// 않도록 여유 있게 잡음. 페이지네이션 높이 계산(paginateQuestions)과 실제
+// 다운로드 HTML의 .clQBlock CSS가 같은 상수를 써야 "2문제가 실제로 들어갈
+// 수 있는지" 판단과 "실제로 보이는 간격"이 어긋나지 않는다.
+const MB_Q_GAP_MM = 10;
 
 function mmToPxRatio() {
   const d = document.createElement('div');
@@ -903,13 +908,14 @@ function paginateQuestions(blocksHtml, colWidthMm, colHeightMm) {
   });
   stage.remove();
 
+  const gapPx = MB_Q_GAP_MM * ratio;
   const columns = [];
   let i = 0;
   while (i < blocksHtml.length) {
     const col = [blocksHtml[i]];
     let h = heights[i];
     i++;
-    if (i < blocksHtml.length && h + heights[i] <= colHeightPx) {
+    if (i < blocksHtml.length && h + gapPx + heights[i] <= colHeightPx) {
       col.push(blocksHtml[i]);
       i++;
     }
@@ -983,7 +989,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 .clBody{display:grid;grid-template-columns:1fr 1fr;column-gap:${MB_COL_GAP_MM}mm;min-height:${colHeightMm}mm}
 .clCol{border-left:1px solid var(--gold-line);padding-left:${MB_COL_GAP_MM / 2}mm;min-width:0}
 .clCol:first-child{border-left:none;padding-left:0}
-.clQBlock{break-inside:avoid;margin-bottom:6mm;font-size:12.5px;line-height:1.6}
+.clQBlock{break-inside:avoid;margin-bottom:${MB_Q_GAP_MM}mm;font-size:12.5px;line-height:1.6}
 .clQNum{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--cream);font-weight:800;font-size:11px;margin-bottom:2mm}
 .clQBody p{margin:0 0 2mm}
 .clQBody img{max-width:100%;height:auto;display:block;margin:2mm auto}
