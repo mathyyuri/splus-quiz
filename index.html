@@ -3,449 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>서울대 2028 입시 퀴즈 | 보라고·서천고·신갈고</title>
-<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Serif+KR:wght@300;400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<title>MATHY YURI'S CLINIC 교재 생성기</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;0,900;1,600&family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
-:root {
-  --cream: #faf7f2;
-  --warm-white: #fffef9;
-  --gold: #b8860b;
-  --gold-light: #d4a843;
-  --gold-pale: #f5e9c8;
-  --gold-ultra: #fdf6e3;
-  --brown: #6b4c1e;
-  --brown-light: #9b7040;
-  --text: #2c2016;
-  --text-muted: #8a7260;
-  --text-light: #b8a898;
-  --border: #e8d9c0;
-  --border-light: #f0e4ce;
-  --correct: #2d7a4f;
-  --correct-bg: #edf7f1;
-  --correct-border: #a8d5bb;
-  --wrong: #c0392b;
-  --wrong-bg: #fdf0ee;
-  --wrong-border: #f0b8b2;
-  --shadow: 0 4px 24px rgba(107,76,30,0.08);
-  --shadow-hover: 0 8px 40px rgba(107,76,30,0.14);
+:root{
+  --cream:#FBF8F1;
+  --ink:#1A1A1A;
+  --gold:#A8853F;
+  --gold-soft:rgba(168,133,63,.12);
+  --gold-line:#E6DCC6;
+  --mint:#7FC8B4;
+  --mint-deep:#3E8F79;
+  --mint-soft:rgba(127,200,180,.14);
+  --pink:#E58BA4;
+  --pink-deep:#C64E71;
+  --pink-soft:rgba(229,139,164,.14);
+  --serif:'Playfair Display','Noto Serif KR',serif;
+  --kserif:'Noto Serif KR',serif;
+  --sans:'Noto Sans KR',sans-serif;
 }
-*{margin:0;padding:0;box-sizing:border-box;}
-body{
-  background:var(--cream);color:var(--text);
-  font-family:'Noto Sans KR',sans-serif;min-height:100vh;
-  background-image:
-    radial-gradient(ellipse 100% 60% at 50% 0%,rgba(212,168,67,0.06) 0%,transparent 70%),
-    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23b8860b' fill-opacity='0.025'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E");
-}
-.wrapper{max-width:800px;margin:0 auto;padding:0 24px 80px;}
+* { box-sizing: border-box; }
+body { font-family: var(--sans); max-width: 980px; margin: 40px auto; padding: 0 4vw 80px; line-height: 1.6; background: var(--cream); color: var(--ink); -webkit-font-smoothing: antialiased; }
+h1 { font-family: var(--serif); font-weight: 900; font-size: 26px; margin-bottom: 4px; }
+.subtitle { color: var(--gold); font-family: var(--kserif); font-size: 13px; margin-bottom: 20px; }
+.box { border: 1px solid var(--gold-line); background: #fff; border-radius: 4px; padding: 18px; margin: 16px 0; }
+.stepTitle { font-family: var(--kserif); font-weight: 700; color: var(--gold); font-size: 13px; letter-spacing: .04em; margin: 0 0 10px; text-transform: uppercase; }
+.hint { color: rgba(26,26,26,.55); font-size: 12.5px; }
+.hint.err { color: var(--pink-deep); }
+.hint.ok { color: var(--mint-deep); }
+input[type=text], input[type=number], input[type=date], input[type=file] { padding: 8px; font-size: 14px; font-family: var(--sans); border: 1px solid var(--gold-line); border-radius: 3px; background: #fff; }
+button { font-family: var(--sans); font-size: 13px; letter-spacing: .06em; font-weight: 700; padding: 8px 16px; cursor: pointer; background: var(--ink); color: var(--cream); border: 1px solid var(--ink); border-radius: 3px; transition: .2s; }
+button:hover:not(:disabled) { background: var(--mint-deep); border-color: var(--mint-deep); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.secondary { background: #fff; color: var(--ink); border-color: var(--gold-line); }
+button.secondary:hover:not(:disabled) { background: var(--gold-soft); border-color: var(--gold); color: var(--ink); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.titlePreview { font-family: var(--serif); font-weight: 900; font-size: 20px; color: var(--ink); margin: 10px 0; padding: 12px 16px; background: var(--gold-soft); border-radius: 4px; }
 
-/* 헤더 */
-header{text-align:center;padding:52px 0 40px;}
-.header-ornament{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:22px;}
-.orn-line{height:1px;width:56px;background:linear-gradient(90deg,transparent,var(--gold-light));}
-.orn-line.r{background:linear-gradient(90deg,var(--gold-light),transparent);}
-.orn-dot{width:7px;height:7px;background:var(--gold-light);transform:rotate(45deg);}
-.school-tags{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
-.school-tag{font-size:11px;letter-spacing:.12em;color:var(--gold);border:1px solid var(--gold-light);padding:4px 14px;border-radius:20px;background:var(--gold-ultra);font-weight:600;}
-header h1{font-family:'Nanum Myeongjo',serif;font-size:clamp(26px,5vw,42px);font-weight:800;color:var(--text);line-height:1.25;margin-bottom:10px;}
-header h1 .ac{color:var(--gold);}
-header p{font-size:13px;color:var(--text-muted);font-weight:300;letter-spacing:.04em;}
+.qList { max-height: 420px; overflow-y: auto; border: 1px solid var(--gold-line); border-radius: 4px; margin-top: 10px; }
+.qRow { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--gold-line); font-size: 13px; }
+.qRow:last-child { border-bottom: none; }
+.qRow input[type=checkbox] { margin-top: 3px; flex: 0 0 auto; }
+.qNum { font-weight: 800; color: var(--gold); min-width: 30px; flex: 0 0 auto; }
+.qPreview { color: rgba(26,26,26,.75); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
-/* 요약 */
-.summary-wrap{background:var(--warm-white);border:1px solid var(--border);border-radius:20px;padding:30px 32px;margin-bottom:28px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
-.summary-wrap::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--gold-light),var(--gold));}
-.sum-hd{display:flex;align-items:center;gap:10px;margin-bottom:20px;}
-.sum-hd-icon{width:30px;height:30px;background:var(--gold-ultra);border:1px solid var(--gold-pale);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;}
-.sum-hd h2{font-family:'Nanum Myeongjo',serif;font-size:16px;font-weight:700;color:var(--brown);}
-.sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
-@media(max-width:540px){.sum-grid{grid-template-columns:1fr;}}
-.sum-item{background:var(--cream);border:1px solid var(--border-light);border-radius:11px;padding:13px 15px;transition:border-color .2s;}
-.sum-item:hover{border-color:var(--gold-light);}
-.sum-lb{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-light);margin-bottom:5px;font-weight:600;}
-.sum-vl{font-size:13px;color:var(--text);line-height:1.65;}
-.sum-vl strong{color:var(--gold);font-weight:700;}
-.sum-vl .red{color:var(--wrong);font-weight:700;}
+.cohortGroup { margin-bottom: 14px; }
+.cohortGroup h4 { font-family: var(--kserif); font-size: 13px; color: var(--ink); margin: 0 0 6px; }
+.studentGrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.studentChip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--gold-line); border-radius: 20px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; background: #fff; user-select: none; }
+.studentChip input { margin: 0; }
+.studentChip:has(input:checked) { background: var(--mint-soft); border-color: var(--mint-deep); color: var(--mint-deep); font-weight: 700; }
 
-/* 진행바 */
-.prog-wrap{margin-bottom:26px;}
-.prog-meta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;}
-.prog-lb{font-size:11px;color:var(--text-muted);letter-spacing:.08em;font-weight:500;}
-.prog-num{font-family:'Nanum Myeongjo',serif;font-size:19px;color:var(--gold);font-weight:700;}
-.prog-track{height:4px;background:var(--border-light);border-radius:2px;overflow:hidden;}
-.prog-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:2px;transition:width .55s cubic-bezier(.4,0,.2,1);}
-
-/* 퀴즈 카드 */
-.quiz-card{background:var(--warm-white);border:1px solid var(--border);border-radius:20px;padding:36px 40px;box-shadow:var(--shadow);animation:fadeUp .38s ease;}
-@keyframes fadeUp{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:translateY(0)}}
-.q-badge{display:inline-block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);background:var(--gold-ultra);border:1px solid var(--gold-pale);padding:3px 12px;border-radius:12px;margin-bottom:16px;font-weight:700;}
-.q-text{font-family:'Noto Serif KR',serif;font-size:clamp(15px,2.2vw,18px);font-weight:600;line-height:1.75;color:var(--text);margin-bottom:26px;}
-.opts{display:flex;flex-direction:column;gap:10px;}
-.opt-btn{background:var(--cream);border:1.5px solid var(--border);border-radius:11px;padding:14px 18px;text-align:left;cursor:pointer;color:var(--text);font-size:13.5px;font-family:'Noto Sans KR',sans-serif;font-weight:400;line-height:1.6;display:flex;align-items:flex-start;gap:13px;transition:all .18s ease;}
-.opt-btn:hover:not(:disabled){background:var(--gold-ultra);border-color:var(--gold-light);transform:translateX(3px);box-shadow:0 2px 10px rgba(184,134,11,.1);}
-.opt-let{width:25px;height:25px;border-radius:50%;background:var(--border-light);color:var(--text-muted);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;transition:all .18s;letter-spacing:0;}
-.opt-btn.correct{background:var(--correct-bg);border-color:var(--correct-border);color:var(--correct);}
-.opt-btn.correct .opt-let{background:var(--correct);color:#fff;}
-.opt-btn.wrong{background:var(--wrong-bg);border-color:var(--wrong-border);color:var(--wrong);}
-.opt-btn.wrong .opt-let{background:var(--wrong);color:#fff;}
-.opt-btn.dimmed{opacity:.4;background:var(--cream);}
-
-/* 피드백 */
-.feedback{display:none;margin-top:18px;padding:16px 20px;border-radius:11px;font-size:13px;line-height:1.75;animation:fadeIn .28s ease;}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.feedback.show{display:block;}
-.feedback.ok{background:var(--correct-bg);border:1px solid var(--correct-border);color:var(--correct);}
-.feedback.ng{background:var(--wrong-bg);border:1px solid var(--wrong-border);color:var(--brown);}
-.fb-head{font-weight:700;font-size:13.5px;margin-bottom:5px;}
-.fb-body{color:var(--text);}
-
-/* 다음 버튼 */
-.btn-next{display:none;width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,var(--gold),var(--gold-light));border:none;border-radius:11px;color:#fff;font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;letter-spacing:.04em;transition:all .2s;box-shadow:0 4px 14px rgba(184,134,11,.22);}
-.btn-next:hover{transform:translateY(-2px);box-shadow:0 8px 26px rgba(184,134,11,.28);}
-.btn-next.show{display:block;}
-
-/* 인트로 안내 */
-.intro-notice{background:var(--warm-white);border:1px solid var(--border);border-radius:16px;padding:26px 30px;margin-bottom:22px;box-shadow:var(--shadow);}
-.intro-notice h3{font-family:'Nanum Myeongjo',serif;font-size:16px;color:var(--brown);margin-bottom:15px;font-weight:700;}
-.intro-notice ul{list-style:none;display:flex;flex-direction:column;gap:9px;}
-.intro-notice li{font-size:13px;color:var(--text-muted);padding-left:18px;position:relative;line-height:1.6;}
-.intro-notice li::before{content:'◆';position:absolute;left:0;color:var(--gold-light);font-size:8px;top:5px;}
-.btn-start{width:100%;padding:17px;background:linear-gradient(135deg,var(--brown),var(--brown-light));border:none;border-radius:13px;color:var(--warm-white);font-size:15px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;letter-spacing:.06em;transition:all .22s;box-shadow:0 6px 22px rgba(107,76,30,.18);}
-.btn-start:hover{transform:translateY(-3px);box-shadow:0 12px 34px rgba(107,76,30,.26);}
-
-/* 결과 */
-.result-wrap{display:none;animation:fadeUp .45s ease;}
-.result-wrap.show{display:block;}
-.result-hero{text-align:center;padding:44px 24px 32px;background:var(--warm-white);border:1px solid var(--border);border-radius:20px;margin-bottom:22px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
-.result-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--gold-light),var(--gold));}
-.score-ring{width:124px;height:124px;border-radius:50%;border:3px solid var(--gold-light);display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 22px;background:var(--gold-ultra);box-shadow:0 0 28px rgba(184,134,11,.1),inset 0 0 20px rgba(184,134,11,.05);}
-.score-num{font-family:'Nanum Myeongjo',serif;font-size:46px;font-weight:800;color:var(--gold);line-height:1;}
-.score-den{font-size:12px;color:var(--text-light);margin-top:2px;}
-.result-msg{font-family:'Nanum Myeongjo',serif;font-size:21px;font-weight:700;color:var(--text);margin-bottom:7px;}
-.result-sub{font-size:13px;color:var(--text-muted);line-height:1.6;}
-.review-sec{background:var(--warm-white);border:1px solid var(--border);border-radius:16px;padding:24px 28px;margin-bottom:22px;box-shadow:var(--shadow);}
-.rev-title{font-family:'Nanum Myeongjo',serif;font-size:15px;font-weight:700;color:var(--brown);margin-bottom:16px;}
-.rev-item{display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-bottom:1px solid var(--border-light);font-size:12.5px;}
-.rev-item:last-child{border-bottom:none;}
-.rev-icon{font-size:14px;flex-shrink:0;margin-top:1px;}
-.rev-q{color:var(--text-muted);margin-bottom:3px;line-height:1.5;}
-.rev-a{color:var(--text);font-weight:500;}
-.btn-restart{width:100%;padding:15px;background:var(--warm-white);border:1.5px solid var(--gold-light);border-radius:11px;color:var(--gold);font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;letter-spacing:.04em;transition:all .2s;}
-.btn-restart:hover{background:var(--gold);color:#fff;box-shadow:0 6px 18px rgba(184,134,11,.22);}
+table.gradeTbl { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 12.5px; }
+table.gradeTbl th, table.gradeTbl td { border: 1px solid var(--gold-line); padding: 4px 6px; text-align: center; }
+table.gradeTbl th { background: var(--gold-soft); color: var(--gold); font-family: var(--kserif); font-weight: 700; white-space: nowrap; }
+table.gradeTbl td.nameCell { text-align: left; font-weight: 700; white-space: nowrap; background: #fff; position: sticky; left: 0; }
+.gradeCell { cursor: pointer; width: 30px; height: 26px; font-weight: 800; user-select: none; }
+.gradeCell[data-v="1"] { color: var(--mint-deep); background: var(--mint-soft); }
+.gradeCell[data-v="2"] { color: var(--pink-deep); background: var(--pink-soft); }
+.scoreCell { font-weight: 800; color: var(--gold); white-space: nowrap; }
 </style>
 </head>
 <body>
-<div class="wrapper">
 
-<header>
-  <div class="header-ornament">
-    <div class="orn-line"></div><div class="orn-dot"></div><div class="orn-line r"></div>
-  </div>
-  <div class="school-tags">
-    <span class="school-tag">보라고등학교</span>
-    <span class="school-tag">서천고등학교</span>
-    <span class="school-tag">신갈고등학교</span>
-  </div>
-  <h1>서울대학교 <span class="ac">2028</span><br>입시 완전정복 퀴즈</h1>
-  <p>대치에스플러스학원 자료 기반 · 핵심 변경사항 10문제</p>
-</header>
+<a href="problembank.html" style="color:var(--gold);font-size:12px;text-decoration:none">&larr; 교재/시험지 관리로</a>
+<h1><span style="color:var(--gold)">MATHY YURI'S</span> CLINIC 교재 생성기</h1>
+<p class="subtitle">시험지를 업로드해서 예쁜 A4 클리닉 교재를 만들고, 바로 채점까지</p>
 
-<!-- 인트로 -->
-<div id="introScreen">
-  <div class="summary-wrap">
-    <div class="sum-hd">
-      <div class="sum-hd-icon">📋</div>
-      <h2>2028학년도 서울대 핵심 변경사항 요약</h2>
-    </div>
-    <div class="sum-grid">
-      <div class="sum-item">
-        <div class="sum-lb">수시 지역균형 추천 인원</div>
-        <div class="sum-vl">학교별 <strong>2명 → 3명</strong> 확대<br>단, <strong>일반고(자공고 포함)만</strong> 지원 가능</div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">수시 지역균형 수능 최저</div>
-        <div class="sum-vl">3개 영역 합 7 이내<br>→ <span class="red">수능 최저 완전 폐지</span></div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">수시 지역균형 모집인원</div>
-        <div class="sum-vl">514명 → <strong>728명 (▲214명)</strong><br>역대 최대폭 증가</div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">정시 지역균형전형</div>
-        <div class="sum-vl">'나'군 153명 운영<br>→ <span class="red">2028 완전 폐지</span></div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">정시 일반전형 2단계</div>
-        <div class="sum-vl">수능80 + 교과20<br>→ <strong>수능60 + 교과역량40</strong></div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">정시 수능 성적 산출</div>
-        <div class="sum-vl">표준점수 → <strong>1단계 등급</strong><br><strong>2단계 국·수·탐 백분위</strong></div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">교과역량평가 비중·등급</div>
-        <div class="sum-vl">20%, A·B·C 3단계<br>→ <strong>40%, A+·A·B+·B·C 5단계</strong></div>
-      </div>
-      <div class="sum-item">
-        <div class="sum-lb">면접 방식 변화</div>
-        <div class="sum-vl">학생부 기반 15분<br>→ <strong>SNU역량평가 20분</strong></div>
-      </div>
-    </div>
+<div class="box">
+  <p class="stepTitle">1. 시험지 업로드</p>
+  <div class="row">
+    <input type="file" id="fileInput" accept=".hwpx">
+    <button id="parseBtn" disabled>불러오기</button>
   </div>
-
-  <div class="intro-notice">
-    <h3>🎯 퀴즈 안내</h3>
-    <ul>
-      <li>총 10문제, 4지선다형으로 출제됩니다</li>
-      <li>선택 즉시 정오답과 상세 해설을 확인할 수 있습니다</li>
-      <li>퀴즈 종료 후 전체 문제 복습이 가능합니다</li>
-      <li>대치에스플러스학원 PDF 자료의 정확한 수치를 기반으로 출제되었습니다</li>
-    </ul>
-  </div>
-  <button class="btn-start" onclick="startQuiz()">퀴즈 시작하기 →</button>
+  <p class="hint" id="parseHint"></p>
 </div>
 
-<!-- 퀴즈 -->
-<div id="quizScreen" style="display:none">
-  <div class="prog-wrap">
-    <div class="prog-meta">
-      <span class="prog-lb">PROGRESS</span>
-      <span class="prog-num" id="progNum">1 / 10</span>
-    </div>
-    <div class="prog-track"><div class="prog-fill" id="progFill" style="width:10%"></div></div>
+<div class="box" id="qBox" style="display:none">
+  <p class="stepTitle">2. 문제 선택 (기본 전체 선택)</p>
+  <div class="row">
+    <button id="selAllBtn" class="secondary">전체 선택/해제</button>
+    <span class="hint" id="qCountHint"></span>
   </div>
-  <div class="quiz-card">
-    <div class="q-badge" id="qBadge"></div>
-    <div class="q-text" id="qText"></div>
-    <div class="opts" id="optsArea"></div>
-    <div class="feedback" id="feedback">
-      <div class="fb-head" id="fbHead"></div>
-      <div class="fb-body" id="fbBody"></div>
-    </div>
-    <button class="btn-next" id="btnNext" onclick="nextQ()"></button>
-  </div>
+  <div class="qList" id="qList"></div>
 </div>
 
-<!-- 결과 -->
-<div class="result-wrap" id="resultScreen">
-  <div class="result-hero">
-    <div class="score-ring">
-      <div class="score-num" id="scoreNum"></div>
-      <div class="score-den">/ 10점</div>
-    </div>
-    <div class="result-msg" id="resultMsg"></div>
-    <div class="result-sub" id="resultSub"></div>
-    <div id="submitStatus" style="margin-top:12px;font-size:12px;letter-spacing:.04em;"></div>
+<div class="box" id="titleBox" style="display:none">
+  <p class="stepTitle">3. 교재 제목</p>
+  <div class="row">
+    <label class="hint">출제 날짜 <input type="date" id="issueDate"></label>
+    <label class="hint">Vol. <input type="number" id="volNum" min="1" style="width:70px"></label>
+    <label class="hint"><input type="checkbox" id="titleOverrideChk"> 제목 직접 입력</label>
   </div>
-  <div class="review-sec">
-    <div class="rev-title">📝 전체 문제 복습</div>
-    <div id="revItems"></div>
-  </div>
-  <button class="btn-restart" onclick="restart()">🔄 다시 풀기</button>
+  <input type="text" id="titleOverrideInput" style="width:100%;margin-top:8px;display:none" placeholder="제목 직접 입력">
+  <div class="titlePreview" id="titlePreview"></div>
+  <button id="generateBtn">교재 HTML 생성 (다운로드)</button>
+  <button id="saveToBankBtn" class="secondary">문제은행에도 저장</button>
+  <p class="hint" id="genHint"></p>
 </div>
 
+<div class="box" id="gradeBox" style="display:none">
+  <p class="stepTitle">4. 채점 (선택)</p>
+  <p class="hint">위에서 만든 교재를 학생들에게 풀리고 채점한 결과를 저장합니다. 저장하려는 카테고리 시트가 구글시트에 미리 있어야 합니다(없으면 "카테고리설정" 탭에 한 줄 추가).</p>
+  <div class="row">
+    <label class="hint">기수
+      <select id="gradeCohort"><option value="2">2기</option><option value="3">3기</option></select>
+    </label>
+    <label class="hint">반 <input type="text" id="gradeClass" placeholder="예: S+" style="width:80px"></label>
+    <label class="hint">카테고리 <input type="text" id="gradeCategory" value="클리닉" style="width:100px"></label>
+    <label class="hint">미션명(시험명) <input type="text" id="gradeMission" style="width:260px"></label>
+    <button id="loadRosterBtn" class="secondary">명단 불러오기</button>
+  </div>
+  <p class="hint" id="gradeHint"></p>
+  <div id="gradeArea"></div>
+  <button id="saveScoresBtn" style="margin-top:10px;display:none">채점 결과 저장</button>
+  <p class="hint" id="saveHint"></p>
 </div>
-<script>
-const Q=[
-  {
-    cat:"모집인원 변화",
-    q:"2028학년도 서울대 수시 지역균형전형(지균)의 모집인원은 2027학년도 대비 얼마나 증가했나요?",
-    opts:["▲54명 (568명)","▲100명 (614명)","▲214명 (728명)","▲310명 (824명)"],
-    ans:2,
-    fb:"수시 지역균형전형은 2027학년도 514명에서 2028학년도 728명으로 214명이 증가합니다. 지균 비중이 대폭 확대되어 내신 최상위권 학생에게 매우 유리해졌습니다."
-  },
-  {
-    cat:"지역균형 핵심 변경",
-    q:"2028학년도 수시 지역균형전형의 수능 최저학력기준은 어떻게 바뀌었나요?",
-    opts:["3개 영역 합 6 이내로 강화","3개 영역 합 7 이내로 유지","4개 영역 합 8 이내로 변경","수능 최저학력기준 완전 폐지"],
-    ans:3,
-    fb:"2028학년도부터 수시 지역균형전형의 수능 최저학력기준이 완전히 폐지됩니다. 2027년까지는 3개 영역 합 7 이내였으나, 2028년부터는 수능 최저 없이 내신·서류·면접만으로 합격이 결정됩니다."
-  },
-  {
-    cat:"지역균형 지원 자격",
-    q:"2028학년도 수시 지역균형전형의 추천 인원 상한과 지원 가능 고교 유형은?",
-    opts:["학교별 2명 이내, 고교 유형 제한 없음","학교별 3명 이내, 일반고(자공고 포함)만 지원","학교별 3명 이내, 고교 유형 제한 없음","학교별 4명 이내, 일반고만 지원"],
-    ans:1,
-    fb:"2028학년도 지역균형전형은 추천 인원이 2명→3명으로 늘었습니다. 동시에 '일반고(자공고 포함)만 지원 가능'이라는 고교 유형 제한이 새로 생겼습니다. 특목고·자사고 학생은 지원 불가합니다."
-  },
-  {
-    cat:"정시 전형 폐지",
-    q:"2028학년도에 완전히 폐지되는 서울대 전형은 무엇인가요?",
-    opts:["수시 기회균형전형","수시 일반전형","정시 지역균형전형","수시 지역균형전형"],
-    ans:2,
-    fb:"2027학년도까지 '나'군 153명을 모집하던 정시 지역균형전형이 2028학년도에 완전히 폐지됩니다. 정시는 일반전형 단일 체제로 운영되며, 정시 일반전형 모집인원도 1,208명→1,119명으로 109명 감소합니다."
-  },
-  {
-    cat:"정시 2단계 구조",
-    q:"2028학년도 정시 일반전형 2단계 전형 비율로 옳은 것은?",
-    opts:["수능 80% + 교과역량 20%","수능 70% + 면접 30%","수능 60% + 교과역량 40%","수능 100%"],
-    ans:2,
-    fb:"2027학년도까지 정시 2단계는 수능80+교과20이었으나, 2028년부터 수능60+교과역량40으로 변경됩니다. 교과역량평가 비중이 2배로 높아져 내신 관리의 중요성이 더욱 커졌습니다."
-  },
-  {
-    cat:"교과역량평가",
-    q:"2028학년도 정시 일반전형 교과역량평가의 반영 비율과 등급 체계로 옳은 것은?",
-    opts:["20% 반영, A·B·C 3단계","30% 반영, A+·A·B·C 4단계","40% 반영, A+·A·B+·B·C 5단계","40% 반영, A·B·C·D 4단계"],
-    ans:2,
-    fb:"2028 교과역량평가는 40% 반영(2027: 20%)으로 비중이 2배 확대되고, 등급도 A+·A·B+·B·C의 5단계로 세분화됩니다. 2인 평가등급 조합 방식은 동일하게 유지됩니다."
-  },
-  {
-    cat:"정시 수능 산출 방식",
-    q:"2028학년도 정시 일반전형의 수능 성적 산출 방식으로 옳은 것은?",
-    opts:["전 단계 표준점수 활용","1단계 국·수·영·탐·한 등급 / 2단계 국·수·탐 백분위","1단계 국·수·탐 백분위 / 2단계 표준점수","전 단계 백분위 활용"],
-    ans:1,
-    fb:"2027년까지는 표준점수만 활용했으나, 2028년부터 1단계는 국·수·영·탐·한국사 등급으로 3배수 선발하고, 2단계는 국·수·탐 백분위로 최종 합격자를 가립니다."
-  },
-  {
-    cat:"수시 일반전형 면접",
-    q:"2028학년도 수시 일반전형의 2단계 구성과 면접 방식으로 옳은 것은?",
-    opts:["1단계 70% + 면접 30%, 학생부 기반 15분","1단계 50% + 면접 50%, SNU역량평가 각 20분 내외","서류 100%, 면접 없음","1단계 50% + 면접 50%, 학생부 기반 10분"],
-    ans:1,
-    fb:"수시 일반전형 2단계는 1단계 50%+면접 50%로 구성됩니다. 면접은 SNU역량평가 면접으로 바뀌어 각 20분 내외(준비시간 별도)로 진행됩니다. 2027년 15분에서 길어졌습니다."
-  },
-  {
-    cat:"주요 모집단위",
-    q:"2028학년도 치의학과에서 새로 신설된 전형과 해당 모집인원으로 옳은 것은?",
-    opts:["수시 기회균형전형 5명 신설","수시 지역균형전형 10명 신설","정시 지역균형전형 10명 신설","수시 일반전형 10명 신설"],
-    ans:1,
-    fb:"치의학과는 2028학년도부터 수시 지역균형전형에 10명을 신설 모집합니다. 전체 45명 모집(수시 지균 10·수시 일반 25·정시 일반 10)이며, 지균 신설은 치의학과에서 처음 있는 큰 변화입니다."
-  },
-  {
-    cat:"서울대 평가 역량",
-    q:"서울대가 학생부종합전형에서 중점 평가하는 3가지 핵심 역량으로 옳은 것은?",
-    opts:["학업역량 · 리더십 · 글로벌역량","학업역량 · 주도적 태도 · 공동체 의무","창의력 · 논리력 · 협동심","전공적합성 · 발전가능성 · 인성"],
-    ans:1,
-    fb:"서울대는 ① 학업역량(폭넓은 지식을 깊이 있게 갖추고 활용), ② 주도적 태도(스스로 알고자 하고 능동적으로 배우는 노력), ③ 공동체 의무(타인 배려·공동체 기여 의지)를 3대 핵심 평가 역량으로 제시합니다."
-  }
-];
 
-// ▼▼▼ STEP 4: 아래 YOUR_WEBAPP_URL_HERE 부분을 Apps Script 웹앱 URL로 교체하세요 ▼▼▼
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyIF_pwDdyjns5QxAFIRoHxVyteX73xibDm71mMcjc651A4sydSAQbsSHDSg8jCX_2a/exec';
-// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+<!-- 오답노트 시스템(hwpx-lib.js 공유)과는 별개로 동작하도록 독립된
+     clinicmaker.js를 씀 — 다른 도구들과 동일하게 매번 새 쿼리스트링으로
+     캐시 무력화. 이 위치(모든 요소가 파싱된 뒤)에서 불러와야 클리닉메이커
+     자체의 최상위 addEventListener 등록이 null을 만나지 않는다. -->
+<script>document.write('<script src="clinicmaker.js?v=' + Date.now() + '"><\/script>');</script>
 
-let cur=0,score=0,answers=[],answered=false;
-
-function startQuiz(){
-  document.getElementById('introScreen').style.display='none';
-  document.getElementById('quizScreen').style.display='block';
-  loadQ();
-}
-
-function loadQ(){
-  answered=false;
-  const q=Q[cur];
-  document.getElementById('progNum').textContent=`${cur+1} / 10`;
-  document.getElementById('progFill').style.width=`${(cur+1)*10}%`;
-  document.getElementById('qBadge').textContent=q.cat;
-  document.getElementById('qText').textContent=q.q;
-
-  const area=document.getElementById('optsArea');
-  area.innerHTML='';
-  ['A','B','C','D'].forEach((L,i)=>{
-    const btn=document.createElement('button');
-    btn.className='opt-btn';
-    btn.innerHTML=`<span class="opt-let">${L}</span>${q.opts[i]}`;
-    btn.onclick=()=>pick(i);
-    area.appendChild(btn);
-  });
-
-  document.getElementById('feedback').className='feedback';
-  document.getElementById('btnNext').classList.remove('show');
-}
-
-function pick(chosen){
-  if(answered)return;
-  answered=true;
-  const q=Q[cur];
-  const btns=document.querySelectorAll('.opt-btn');
-  const ok=chosen===q.ans;
-  if(ok)score++;
-  answers.push({chosen,ok});
-
-  btns.forEach((b,i)=>{
-    b.disabled=true;
-    if(i===q.ans)b.classList.add('correct');
-    else if(i===chosen&&!ok)b.classList.add('wrong');
-    else b.classList.add('dimmed');
-  });
-
-  const fb=document.getElementById('feedback');
-  fb.className='feedback show '+(ok?'ok':'ng');
-  document.getElementById('fbHead').textContent=ok?'✅ 정답입니다!':'❌ 오답입니다.';
-  document.getElementById('fbBody').textContent=q.fb;
-
-  const btn=document.getElementById('btnNext');
-  btn.textContent=cur<9?'다음 문제 →':'결과 보기 →';
-  btn.classList.add('show');
-}
-
-function nextQ(){
-  cur++;
-  if(cur<10)loadQ();
-  else showResult();
-}
-
-function showResult(){
-  document.getElementById('quizScreen').style.display='none';
-  const rs=document.getElementById('resultScreen');
-  rs.classList.add('show');
-  document.getElementById('scoreNum').textContent=score;
-
-  let msg,sub;
-  if(score===10)     {msg='🏆 완벽한 입시 전문가!';     sub='서울대 2028 입시 변경사항을 완벽히 이해했습니다!';}
-  else if(score>=8)  {msg='🎯 우수한 이해도!';           sub='핵심 내용을 잘 파악했습니다. 틀린 문제만 보완하세요.';}
-  else if(score>=6)  {msg='📚 절반 이상 맞혔어요!';      sub='기본기는 있습니다. 전형별 세부 변경사항을 집중 복습하세요.';}
-  else if(score>=4)  {msg='💪 조금 더 공부가 필요해요!'; sub='요약 내용을 다시 읽고 반복해 보세요.';}
-  else               {msg='🌱 처음부터 다시 시작해요!';  sub='요약 내용을 꼼꼼히 읽은 후 다시 도전해 보세요!';}
-
-  document.getElementById('resultMsg').textContent=msg;
-  document.getElementById('resultSub').textContent=sub;
-
-  // 구글 시트로 결과 전송
-  submitToSheet();
-
-  const ri=document.getElementById('revItems');
-  ri.innerHTML='';
-  Q.forEach((q,i)=>{
-    const a=answers[i];
-    const d=document.createElement('div');
-    d.className='rev-item';
-    d.innerHTML=`<span class="rev-icon">${a.ok?'✅':'❌'}</span><div><div class="rev-q">Q${i+1}. ${q.q}</div><div class="rev-a">정답: ${q.opts[q.ans]}</div></div>`;
-    ri.appendChild(d);
-  });
-}
-
-function submitToSheet(){
-  if(!SHEET_URL || SHEET_URL==='YOUR_WEBAPP_URL_HERE') return;
-
-  // 전송 상태 표시
-  const statusEl = document.getElementById('submitStatus');
-  if(statusEl) { statusEl.textContent='📤 결과 기록 중...'; statusEl.style.color=getComputedStyle(document.documentElement).getPropertyValue('--text-muted'); }
-
-  const payload = {
-    score: score,
-    answers: answers.map(a => a.ok ? 'O' : 'X')
-  };
-
-  fetch(SHEET_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-  .then(() => {
-    if(statusEl) { statusEl.textContent='✅ 결과가 기록되었습니다!'; statusEl.style.color='#2d7a4f'; }
-  })
-  .catch(() => {
-    if(statusEl) { statusEl.textContent='⚠️ 기록 실패 (URL을 확인해주세요)'; statusEl.style.color='#c0392b'; }
-  });
-}
-
-function restart(){
-  cur=0;score=0;answers=[];
-  document.getElementById('resultScreen').classList.remove('show');
-  document.getElementById('quizScreen').style.display='block';
-  loadQ();
-}
-</script>
 </body>
 </html>
