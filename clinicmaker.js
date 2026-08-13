@@ -950,9 +950,12 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
   // 빈 칸을 남겨둔다(다른 도구들처럼 학생 이름을 코드에 미리 채워넣지 않음).
   const frontCoverHtml = `
     <section class="clSheet clCover">
-      <div class="ccFieldsTL">
-        <span class="ccFieldLabel">반</span><span class="ccFieldLine ccFieldLineSm"></span>
-        <span class="ccFieldLabel">이름</span><span class="ccFieldLine ccFieldLineSm"></span>
+      <div class="ccFrame"></div>
+      <div class="ccFrameSide ccFrameL"></div>
+      <div class="ccFrameSide ccFrameR"></div>
+      <div class="ccNameTab">
+        <div class="ccNameCol"><span class="ccFieldLabelV">반</span><span class="ccFieldLineV"></span></div>
+        <div class="ccNameCol"><span class="ccFieldLabelV">이름</span><span class="ccFieldLineV"></span></div>
       </div>
       <div class="ccKicker">MATH CLINIC WORKBOOK</div>
       <h1 class="ccTitle">MATHY<br>YURI'S<br>CLINIC</h1>
@@ -961,9 +964,12 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
       <div class="ccDate">${escapeHtml(dateText)}</div>
     </section>`;
 
-  // 뒤표지 — 앞표지와 짝을 이루는 클로징 페이지.
+  // 뒤표지 — 앞표지와 짝을 이루는 클로징 페이지(이름란 없이 같은 프레임만).
   const backCoverHtml = `
     <section class="clSheet clCover clCoverBack">
+      <div class="ccFrame"></div>
+      <div class="ccFrameSide ccFrameL"></div>
+      <div class="ccFrameSide ccFrameR"></div>
       <div class="ccBackMark">MATHY YURI'S<br>CLINIC</div>
       <div class="ccBackSub">Vol. ${escapeHtml(volText)} · ${escapeHtml(dateText)}</div>
       <div class="ccBackNote">오늘도 수고했어요.</div>
@@ -987,7 +993,7 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
 <style>
-:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#FBF8F1;--mint-deep:#3E8F79;}
+:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#EFF8F4;--mint-deep:#3E8F79;--border-deep:#123B32;}
 *{box-sizing:border-box}
 body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:12mm 0 30mm}
 .clSheet{position:relative;width:${MB_PAGE_W_MM}mm;min-height:${MB_PAGE_H_MM}mm;margin:0 auto 10mm;background:var(--cream);box-shadow:0 2px 14px rgba(0,0,0,.2);padding:${MB_CONTENT_TOP_MM}mm ${MB_CONTENT_SIDE_MM}mm ${MB_CONTENT_BOTTOM_MM}mm}
@@ -1008,20 +1014,34 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 .clFoot{position:absolute;bottom:8mm;left:0;right:0;text-align:center;font-size:10px;color:rgba(26,26,26,.5)}
 
 /* ---- 표지 ---- */
-.clCover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:5px solid var(--gold);outline:1px solid var(--gold);outline-offset:-5mm}
-.ccFieldsTL{position:absolute;top:12mm;left:14mm;display:flex;align-items:baseline;gap:3mm}
-.ccKicker{font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:11px;letter-spacing:.28em;color:var(--gold)}
+.clCover{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+/* 표지 프레임 — CSS border(두꺼운 폭에서 모서리가 대각선으로 miter 처리되며
+   PDF 캡처(html2canvas) 시 그 대각선 이음매에 지저분한 톱니 아티팩트가 생기는
+   문제가 있어, 대신 상하좌우 4개의 단색 사각형을 각 변에 꽉 채워 겹치는
+   방식으로 그린다(대각선 이음매 자체가 없어 캡처가 항상 깨끗함). 그 위에
+   이름란 탭(.ccNameTab)을 겹쳐 좌상단 구간만 "구멍"을 낸다. */
+.ccFrame{position:absolute;inset:0;pointer-events:none}
+.ccFrame::before,.ccFrame::after{content:'';position:absolute;background:var(--border-deep)}
+.ccFrame::before{top:0;left:0;right:0;height:15mm}
+.ccFrame::after{bottom:0;left:0;right:0;height:15mm}
+.ccFrameSide{position:absolute;top:0;bottom:0;width:15mm;background:var(--border-deep)}
+.ccFrameSide.ccFrameL{left:0}
+.ccFrameSide.ccFrameR{right:0}
+/* 좌상단 이름/반 기입란 — 프레임 위에 배경색과 같은 탭을 덮어 그 구간만
+   테두리 색이 없도록 "구멍"을 내고, 그 안에 세로쓰기(writing-mode)로 반/
+   이름을 세로로 적을 수 있는 칸을 만든다. */
+.ccNameTab{position:absolute;top:0;left:0;width:32mm;height:92mm;background:var(--cream);z-index:2;display:flex;align-items:flex-start;justify-content:center;gap:5mm;padding:9mm 0 7mm}
+.ccNameCol{display:flex;flex-direction:column;align-items:center;height:100%}
+.ccFieldLabelV{writing-mode:vertical-rl;font-family:'Noto Sans KR',sans-serif;font-size:11px;font-weight:700;letter-spacing:.15em;color:rgba(26,26,26,.6);margin-bottom:3mm}
+.ccFieldLineV{flex:1;width:0;min-height:38mm;border-left:1px solid var(--ink)}
+.ccKicker{font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:11px;letter-spacing:.28em;color:var(--border-deep)}
 .ccTitle{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:64px;line-height:1.12;color:var(--ink);margin:9mm 0}
-.ccRule{width:26mm;height:2px;background:var(--gold);margin:2mm 0 6mm}
+.ccRule{width:26mm;height:2px;background:var(--border-deep);margin:2mm 0 6mm}
 .ccVol{font-family:'Noto Serif KR',serif;font-weight:700;font-size:15px;color:var(--ink)}
 .ccDate{font-size:11px;color:rgba(26,26,26,.6);margin-top:2mm}
-.ccField{display:flex;align-items:baseline;gap:3mm}
-.ccFieldLabel{font-size:11px;color:rgba(26,26,26,.6);font-weight:700}
-.ccFieldLine{display:inline-block;width:34mm;border-bottom:1px solid var(--ink)}
-.ccFieldLineSm{width:24mm}
 .ccBackMark{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:24px;line-height:1.3;color:var(--ink)}
 .ccBackSub{font-size:11px;color:rgba(26,26,26,.55);margin-top:4mm;letter-spacing:.04em}
-.ccBackNote{font-family:'Noto Serif KR',serif;font-size:13px;color:var(--gold);margin-top:14mm}
+.ccBackNote{font-family:'Noto Serif KR',serif;font-size:13px;color:var(--border-deep);margin-top:14mm}
 
 /* ---- 메모란 ---- */
 .clMemoBody{display:flex;flex-direction:column;gap:9mm;padding-top:4mm}
