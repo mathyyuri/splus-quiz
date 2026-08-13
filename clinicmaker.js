@@ -950,15 +950,15 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
   // 빈 칸을 남겨둔다(다른 도구들처럼 학생 이름을 코드에 미리 채워넣지 않음).
   const frontCoverHtml = `
     <section class="clSheet clCover">
+      <div class="ccFieldsTL">
+        <span class="ccFieldLabel">반</span><span class="ccFieldLine ccFieldLineSm"></span>
+        <span class="ccFieldLabel">이름</span><span class="ccFieldLine ccFieldLineSm"></span>
+      </div>
       <div class="ccKicker">MATH CLINIC WORKBOOK</div>
       <h1 class="ccTitle">MATHY<br>YURI'S<br>CLINIC</h1>
       <div class="ccRule"></div>
       <div class="ccVol">Vol. ${escapeHtml(volText)}</div>
       <div class="ccDate">${escapeHtml(dateText)}</div>
-      <div class="ccFields">
-        <div class="ccField"><span class="ccFieldLabel">이름</span><span class="ccFieldLine"></span></div>
-        <div class="ccField"><span class="ccFieldLabel">반</span><span class="ccFieldLine"></span></div>
-      </div>
     </section>`;
 
   // 뒤표지 — 앞표지와 짝을 이루는 클로징 페이지.
@@ -1008,16 +1008,17 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 .clFoot{position:absolute;bottom:8mm;left:0;right:0;text-align:center;font-size:10px;color:rgba(26,26,26,.5)}
 
 /* ---- 표지 ---- */
-.clCover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1.5px solid var(--gold);outline:1px solid var(--gold);outline-offset:-6mm}
+.clCover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:5px solid var(--gold);outline:1px solid var(--gold);outline-offset:-5mm}
+.ccFieldsTL{position:absolute;top:12mm;left:14mm;display:flex;align-items:baseline;gap:3mm}
 .ccKicker{font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:11px;letter-spacing:.28em;color:var(--gold)}
-.ccTitle{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:46px;line-height:1.15;color:var(--ink);margin:8mm 0}
+.ccTitle{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:64px;line-height:1.12;color:var(--ink);margin:9mm 0}
 .ccRule{width:26mm;height:2px;background:var(--gold);margin:2mm 0 6mm}
 .ccVol{font-family:'Noto Serif KR',serif;font-weight:700;font-size:15px;color:var(--ink)}
 .ccDate{font-size:11px;color:rgba(26,26,26,.6);margin-top:2mm}
-.ccFields{margin-top:16mm;display:flex;gap:14mm}
 .ccField{display:flex;align-items:baseline;gap:3mm}
 .ccFieldLabel{font-size:11px;color:rgba(26,26,26,.6);font-weight:700}
 .ccFieldLine{display:inline-block;width:34mm;border-bottom:1px solid var(--ink)}
+.ccFieldLineSm{width:24mm}
 .ccBackMark{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:24px;line-height:1.3;color:var(--ink)}
 .ccBackSub{font-size:11px;color:rgba(26,26,26,.55);margin-top:4mm;letter-spacing:.04em}
 .ccBackNote{font-family:'Noto Serif KR',serif;font-size:13px;color:var(--gold);margin-top:14mm}
