@@ -233,6 +233,9 @@ const HWP_EQ_SYMBOLS = {
   upsilon: '\\upsilon', phi: '\\phi', chi: '\\chi', psi: '\\psi', omega: '\\omega',
   SUM: '\\sum', sum: '\\sum', PROD: '\\prod', prod: '\\prod', INT: '\\int', int: '\\int',
   LIM: '\\lim', lim: '\\lim', LDOTS: '\\ldots', ldots: '\\ldots',
+  // "같은 방법으로 β,γ도...VDOTS이다"처럼 단계별 풀이 생략을 나타내는 세로
+  // 점(⋮) — 실제 파일에서 변환 없이 "VDOTS" 글자 그대로 남는 것 확인.
+  VDOTS: '\\vdots', vdots: '\\vdots',
   amp: '&', QED: '\\blacksquare',
   le: '\\leq', ge: '\\geq',
   prime: "'",
