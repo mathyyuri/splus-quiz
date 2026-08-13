@@ -956,9 +956,9 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
       <div class="ccFrame"></div>
       <div class="ccFrameSide ccFrameL"></div>
       <div class="ccFrameSide ccFrameR"></div>
-      <div class="ccNameTab">
-        <div class="ccNameCol"><span class="ccFieldLabelV">반</span><span class="ccFieldLineV"></span></div>
-        <div class="ccNameCol"><span class="ccFieldLabelV">이름</span><span class="ccFieldLineV"></span></div>
+      <div class="ccNameRow">
+        <span class="ccFieldLabelH">반</span><span class="ccFieldLineH"></span>
+        <span class="ccFieldLabelH">이름</span><span class="ccFieldLineH"></span>
       </div>
       <div class="ccKicker">MATH CLINIC WORKBOOK</div>
       <h1 class="ccTitle">MATHY<br>YURI'S<br>CLINIC</h1>
@@ -996,7 +996,7 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
 <style>
-:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#EFF8F4;--mint-deep:#3E8F79;--border-deep:#123B32;}
+:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#EFF8F4;--mint-deep:#3E8F79;--border-deep:#7A2438;}
 *{box-sizing:border-box}
 body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:12mm 0 30mm}
 .clSheet{position:relative;width:${MB_PAGE_W_MM}mm;min-height:${MB_PAGE_H_MM}mm;margin:0 auto 10mm;background:var(--cream);box-shadow:0 2px 14px rgba(0,0,0,.2);padding:${MB_CONTENT_TOP_MM}mm ${MB_CONTENT_SIDE_MM}mm ${MB_CONTENT_BOTTOM_MM}mm}
@@ -1021,22 +1021,21 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 /* 표지 프레임 — CSS border(두꺼운 폭에서 모서리가 대각선으로 miter 처리되며
    PDF 캡처(html2canvas) 시 그 대각선 이음매에 지저분한 톱니 아티팩트가 생기는
    문제가 있어, 대신 상하좌우 4개의 단색 사각형을 각 변에 꽉 채워 겹치는
-   방식으로 그린다(대각선 이음매 자체가 없어 캡처가 항상 깨끗함). 그 위에
-   이름란 탭(.ccNameTab)을 겹쳐 좌상단 구간만 "구멍"을 낸다. */
+   방식으로 그린다(대각선 이음매 자체가 없어 캡처가 항상 깨끗함). 이번에는
+   프레임에 "구멍"을 내지 않고 그대로 유지 — 이름란은 프레임 안쪽 여백에
+   따로 배치한다(.ccNameRow).*/
 .ccFrame{position:absolute;inset:0;pointer-events:none}
 .ccFrame::before,.ccFrame::after{content:'';position:absolute;background:var(--border-deep)}
-.ccFrame::before{top:0;left:0;right:0;height:15mm}
-.ccFrame::after{bottom:0;left:0;right:0;height:15mm}
-.ccFrameSide{position:absolute;top:0;bottom:0;width:15mm;background:var(--border-deep)}
+.ccFrame::before{top:0;left:0;right:0;height:10mm}
+.ccFrame::after{bottom:0;left:0;right:0;height:10mm}
+.ccFrameSide{position:absolute;top:0;bottom:0;width:10mm;background:var(--border-deep)}
 .ccFrameSide.ccFrameL{left:0}
 .ccFrameSide.ccFrameR{right:0}
-/* 좌상단 이름/반 기입란 — 프레임 위에 배경색과 같은 탭을 덮어 그 구간만
-   테두리 색이 없도록 "구멍"을 내고, 그 안에 세로쓰기(writing-mode)로 반/
-   이름을 세로로 적을 수 있는 칸을 만든다. */
-.ccNameTab{position:absolute;top:0;left:0;width:32mm;height:92mm;background:var(--cream);z-index:2;display:flex;align-items:flex-start;justify-content:center;gap:5mm;padding:9mm 0 7mm}
-.ccNameCol{display:flex;flex-direction:column;align-items:center;height:100%}
-.ccFieldLabelV{writing-mode:vertical-rl;font-family:'Noto Sans KR',sans-serif;font-size:11px;font-weight:700;letter-spacing:.15em;color:rgba(26,26,26,.6);margin-bottom:3mm}
-.ccFieldLineV{flex:1;width:0;min-height:38mm;border-left:1px solid var(--ink)}
+/* 좌상단 이름/반 기입란 — 테두리 안쪽(테두리를 침범하지 않는 위치)에 반/
+   이름을 한 줄로 나란히 적을 수 있는 칸을 만든다. */
+.ccNameRow{position:absolute;top:16mm;left:16mm;display:flex;align-items:baseline;gap:4mm}
+.ccFieldLabelH{font-family:'Noto Sans KR',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;color:rgba(26,26,26,.6)}
+.ccFieldLineH{display:inline-block;width:22mm;border-bottom:1px solid var(--ink)}
 .ccKicker{font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:11px;letter-spacing:.28em;color:var(--border-deep)}
 .ccTitle{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:64px;line-height:1.12;color:var(--ink);margin:9mm 0}
 .ccRule{width:26mm;height:2px;background:var(--border-deep);margin:2mm 0 6mm}
