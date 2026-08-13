@@ -510,6 +510,15 @@ function formatConditionBox(inner, rawText) {
   const foundCount = CONDITION_MARKERS.filter(mk => rawText.includes(mk)).length;
   if (foundCount < 2) return null;
   if (/\([가나다라마]\)\s*~/.test(rawText)) return null;
+  // "위의 (가)에 알맞은 수를 p, (나)에 알맞은 식을 f(x)라 할 때, ...값은?"
+  // — 이건 새로운 조건을 나열하는 문장이 아니라, 앞의 증명 박스 안에서 이미
+  // 등장한 빈칸 (가)/(나)를 그냥 다시 언급하며 묻는 마무리 질문이다("위의"로
+  // 시작 + "?"로 끝남). 실제 파일(삼차방정식 문제 21번)에서 이 한 문장 전체가
+  // 통째로 불필요하게 박스 처리되는 것으로 확인 — "위의"로 시작하는 문장은
+  // 조건 박스 대상에서 제외.
+  // \b는 한글 앞뒤에서 발동하지 않으므로("의"→공백 전이는 word-boundary가
+  // 아님) 여기선 \b 대신 뒤에 공백/문자열 끝이 오는지로 직접 확인.
+  if (/^위의(?=\s|$)/.test(rawText.trim())) return null;
   // "이 9개의 숫자 중 다음 조건을 만족시키도록..." 처럼 첫 (가)/(나) 앞에
   // 붙어 있는 도입부 문장은 조건 목록 자체가 아니라 박스 바깥에 있어야 할
   // 일반 문장이다 — 마커 앞부분을 split에 포함시키면 그 도입부까지 통째로
