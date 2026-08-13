@@ -957,8 +957,8 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
       <div class="ccFrameSide ccFrameL"></div>
       <div class="ccFrameSide ccFrameR"></div>
       <div class="ccNameRow">
-        <span class="ccFieldLabelH">반</span><span class="ccFieldLineH"></span>
-        <span class="ccFieldLabelH">이름</span><span class="ccFieldLineH"></span>
+        <span class="ccFieldLabelH">반</span>
+        <span class="ccFieldLabelH">이름</span>
       </div>
       <div class="ccKicker">MATH CLINIC WORKBOOK</div>
       <h1 class="ccTitle">MATHY<br>YURI'S<br>CLINIC</h1>
@@ -996,7 +996,7 @@ function downloadClinicHtml(title, pages, colWidthMm, colHeightMm, dateText, vol
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
 <style>
-:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#EFF8F4;--mint-deep:#3E8F79;--border-deep:#7A2438;}
+:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;--mint-deep:#3E8F79;--border-deep:#141414;}
 *{box-sizing:border-box}
 body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:12mm 0 30mm}
 .clSheet{position:relative;width:${MB_PAGE_W_MM}mm;min-height:${MB_PAGE_H_MM}mm;margin:0 auto 10mm;background:var(--cream);box-shadow:0 2px 14px rgba(0,0,0,.2);padding:${MB_CONTENT_TOP_MM}mm ${MB_CONTENT_SIDE_MM}mm ${MB_CONTENT_BOTTOM_MM}mm}
@@ -1033,9 +1033,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:#ddd6c8;margin:0;padding:1
 .ccFrameSide.ccFrameR{right:0}
 /* 좌상단 이름/반 기입란 — 테두리 안쪽(테두리를 침범하지 않는 위치)에 반/
    이름을 한 줄로 나란히 적을 수 있는 칸을 만든다. */
-.ccNameRow{position:absolute;top:16mm;left:16mm;display:flex;align-items:baseline;gap:4mm}
+.ccNameRow{position:absolute;top:16mm;left:16mm;display:flex;flex-direction:column;align-items:flex-start;gap:6mm}
 .ccFieldLabelH{font-family:'Noto Sans KR',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;color:rgba(26,26,26,.6)}
-.ccFieldLineH{display:inline-block;width:22mm;border-bottom:1px solid var(--ink)}
 .ccKicker{font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:11px;letter-spacing:.28em;color:var(--border-deep)}
 .ccTitle{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:64px;line-height:1.12;color:var(--ink);margin:9mm 0}
 .ccRule{width:26mm;height:2px;background:var(--border-deep);margin:2mm 0 6mm}
