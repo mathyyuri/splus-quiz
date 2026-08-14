@@ -1451,16 +1451,16 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
     // 학생이 로그인(index.html)해서 자기 클리닉 해설을 볼 수 있으려면 이
     // 완성된 정답·해설 HTML이 어딘가에 남아있어야 한다 — 문제은행 저장
     // API(action=upload, 키 불필요)에 채점표/원본 시험지와는 다른 마커로
-    // 올려서 index.html이 미션명으로 찾아 열 수 있게 한다. 실패해도
-    // 다운로드는 이미 끝난 뒤라 조용히 무시.
-    // 파일 확장자는 일부러 .html이 아니라 .txt로 올린다 — 구글 드라이브
-    // 계정 설정에 따라 업로드된 .html 파일이 자동으로 구글 문서로
-    // 변환되어(원본 바이트가 아니게 됨) 나중에 그대로 못 읽어오는 경우가
-    // 있어, 실제로 "해설을 찾을 수 없습니다" 오류가 재현됐다 — 어차피
-    // clinicanswer.html이 내용을 텍스트로 직접 디코딩해 쓰므로 확장자는
-    // 상관없고, .txt는 그런 자동 변환 대상이 되지 않는다.
+    // 올려서 index.html이 미션명으로 찾아 열 수 있게 한다.
+    // callPost는 no-cors라 업로드 성공 여부를 응답으로 알 수 없다(항상
+    // "네트워크 요청은 나갔다"까지만 확인됨) — 실제로 "링크는 있는데
+    // 해설을 찾을 수 없다"는 오류가 반복 재현돼서, 업로드 직후 바로
+    // list→download까지 다시 시도해 실제로 열리는지 그 자리에서 검증하고
+    // 결과를 선생님께 즉시 보여준다(조용히 무시하지 않음).
+    let shareStatus = '';
     try {
       const bytes = new TextEncoder().encode(keyHtml).buffer;
+      const sizeKB = Math.round(bytes.byteLength / 1024);
       await callPost({
         action: 'upload',
         filename: `${title} - 정답해설.txt`,
@@ -1468,8 +1468,26 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
         memo: `${CLINIC_KEY_MARKER} ${title}`,
         questionData: JSON.stringify({ mission: title }),
       });
-    } catch (e) { /* 해설 공유 업로드 실패는 조용히 무시 — 다운로드는 이미 완료됨 */ }
-    hint.textContent = `완료 — ${selected.length}문제`;
+      const verifyList = await callGet({ action: 'list' });
+      const candidates = (verifyList.files || []).filter(f =>
+        (f.memo || '') === `${CLINIC_KEY_MARKER} ${title}`);
+      candidates.sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0));
+      const newest = candidates[0];
+      if (!newest) {
+        shareStatus = ` / ⚠️ 공유 업로드 확인 실패(목록에 안 보임, ${sizeKB}KB) — 학생용 링크는 아직 안 됩니다.`;
+      } else {
+        const verifyDownload = await callGet({ action: 'download', id: newest.id });
+        const gotData = verifyDownload.file && verifyDownload.file.data;
+        if (!gotData) {
+          shareStatus = ` / ⚠️ 공유는 됐지만 다시 불러오기 실패(${sizeKB}KB — 용량이 크면 이 문제은행 저장소가 못 버틸 수 있어요) — 학생용 링크가 안 열릴 수 있습니다.`;
+        } else {
+          shareStatus = ` / 공유 링크 확인 완료(${sizeKB}KB)`;
+        }
+      }
+    } catch (e) {
+      shareStatus = ` / ⚠️ 공유 업로드 실패: ${e.message}`;
+    }
+    hint.textContent = `완료 — ${selected.length}문제${shareStatus}`;
     hint.className = 'hint ok';
   } catch (e) {
     hint.textContent = '실패: ' + e.message;
