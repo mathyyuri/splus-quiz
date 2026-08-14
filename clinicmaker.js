@@ -1390,12 +1390,17 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
     for (const num of selected) {
       const marker = parsedEntry.markers.get(num);
       const answerXml = extractQuickAnswerXml(marker.blockXml);
-      const answerHtml = answerXml ? await hwpFragmentRunsToHtml(answerXml, parsedEntry) : '<span class="eqFallback">(정답 인식 실패)</span>';
+      let answerHtml = answerXml ? await hwpFragmentRunsToHtml(answerXml, parsedEntry) : '<span class="eqFallback">(정답 인식 실패)</span>';
+      // 원본 해설(hp:endNote)의 첫 줄이 그대로 "[정답] ①"처럼 라벨을 포함한
+      // 채로 시작하는 경우가 대부분이라, 빠른정답표에는 그 라벨 없이 답만
+      // 보이도록 맨 앞에서 한 번만 제거(문두에 있을 때만 지움 — 답 안에
+      // 우연히 같은 글자가 있어도 건드리지 않음).
+      answerHtml = answerHtml.replace(/^\s*\[정답\]\s*/, '');
       quickRows += `<div class="qkItem"><span class="qkNum">${num}</span>${answerHtml}</div>`;
 
       const explXml = extractEndnoteFullBodyXml(marker.blockXml);
       const explHtml = explXml ? await hwpBodyXmlToHtml(explXml, parsedEntry) : '<p class="hint">(해설 인식 실패)</p>';
-      explBlocks += `<div class="explBlock"><div class="explNum">${num}번 해설</div>${explHtml}</div>`;
+      explBlocks += `<details class="explBlock"><summary class="explNum">${num}번 해설 보기</summary><div class="explBody">${explHtml}</div></details>`;
     }
     downloadKeyHtml(currentTitle(), quickRows, explBlocks);
     hint.textContent = `완료 — ${selected.length}문제`;
@@ -1426,8 +1431,12 @@ h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:16px;color:var(--
 .qkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:12px 0}
 .qkItem{border:1px solid var(--gold-line);border-radius:4px;padding:6px 8px;background:#fff;text-align:center;font-size:13px}
 .qkNum{display:block;font-weight:800;color:var(--gold);font-size:11px;margin-bottom:2px}
-.explBlock{border-top:1px solid var(--gold-line);padding:14px 0;font-size:13px}
-.explNum{font-weight:800;color:var(--gold);margin-bottom:6px}
+.explBlock{border-top:1px solid var(--gold-line);padding:10px 0;font-size:13px}
+.explNum{font-weight:800;color:var(--gold);cursor:pointer;list-style:none;padding:4px 0}
+.explNum::-webkit-details-marker{display:none}
+.explNum::before{content:'▸ ';display:inline-block;transition:transform .15s}
+.explBlock[open] .explNum::before{transform:rotate(90deg)}
+.explBody{margin-top:8px}
 img{max-width:100%;height:auto}
 table{border-collapse:collapse}
 td{border:1px solid var(--gold-line);padding:2px 6px}
