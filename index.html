@@ -1,191 +1,76 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MATHY YURI'S CLINIC 교재 생성기</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;0,900;1,600&family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<style>
-:root{
-  --cream:#FBF8F1;
-  --ink:#1A1A1A;
-  --gold:#A8853F;
-  --gold-soft:rgba(168,133,63,.12);
-  --gold-line:#E6DCC6;
-  --mint:#7FC8B4;
-  --mint-deep:#3E8F79;
-  --mint-soft:rgba(127,200,180,.14);
-  --pink:#E58BA4;
-  --pink-deep:#C64E71;
-  --pink-soft:rgba(229,139,164,.14);
-  --serif:'Playfair Display','Noto Serif KR',serif;
-  --kserif:'Noto Serif KR',serif;
-  --sans:'Noto Sans KR',sans-serif;
-}
-* { box-sizing: border-box; }
-body { font-family: var(--sans); max-width: 980px; margin: 40px auto; padding: 0 4vw 80px; line-height: 1.6; background: var(--cream); color: var(--ink); -webkit-font-smoothing: antialiased; }
-h1 { font-family: var(--serif); font-weight: 900; font-size: 26px; margin-bottom: 4px; }
-.subtitle { color: var(--gold); font-family: var(--kserif); font-size: 13px; margin-bottom: 20px; }
-.box { border: 1px solid var(--gold-line); background: #fff; border-radius: 4px; padding: 18px; margin: 16px 0; }
-.stepTitle { font-family: var(--kserif); font-weight: 700; color: var(--gold); font-size: 13px; letter-spacing: .04em; margin: 0 0 10px; text-transform: uppercase; }
-.hint { color: rgba(26,26,26,.55); font-size: 12.5px; }
-.hint.err { color: var(--pink-deep); }
-.hint.ok { color: var(--mint-deep); }
-input[type=text], input[type=number], input[type=date], input[type=file] { padding: 8px; font-size: 14px; font-family: var(--sans); border: 1px solid var(--gold-line); border-radius: 3px; background: #fff; }
-button { font-family: var(--sans); font-size: 13px; letter-spacing: .06em; font-weight: 700; padding: 8px 16px; cursor: pointer; background: var(--ink); color: var(--cream); border: 1px solid var(--ink); border-radius: 3px; transition: .2s; }
-button:hover:not(:disabled) { background: var(--mint-deep); border-color: var(--mint-deep); }
-button:disabled { opacity: 0.4; cursor: default; }
-button.secondary { background: #fff; color: var(--ink); border-color: var(--gold-line); }
-button.secondary:hover:not(:disabled) { background: var(--gold-soft); border-color: var(--gold); color: var(--ink); }
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.titlePreview { font-family: var(--serif); font-weight: 900; font-size: 20px; color: var(--ink); margin: 10px 0; padding: 12px 16px; background: var(--gold-soft); border-radius: 4px; }
-
-.qList { max-height: 420px; overflow-y: auto; border: 1px solid var(--gold-line); border-radius: 4px; margin-top: 10px; }
-.qRow { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--gold-line); font-size: 13px; }
-.qRow:last-child { border-bottom: none; }
-.qRow input[type=checkbox] { margin-top: 3px; flex: 0 0 auto; }
-.qNum { font-weight: 800; color: var(--gold); min-width: 30px; flex: 0 0 auto; }
-.qPreview { color: rgba(26,26,26,.75); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-
-.cohortGroup { margin-bottom: 14px; }
-.cohortGroup h4 { font-family: var(--kserif); font-size: 13px; color: var(--ink); margin: 0 0 6px; }
-.studentGrid { display: flex; flex-wrap: wrap; gap: 6px; }
-.studentChip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--gold-line); border-radius: 20px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; background: #fff; user-select: none; }
-.studentChip input { margin: 0; }
-.studentChip:has(input:checked) { background: var(--mint-soft); border-color: var(--mint-deep); color: var(--mint-deep); font-weight: 700; }
-
-/* 채점은 컴퓨터로만 한다는 전제 — 이 박스만 페이지 본문의 980px 폭
-   제한을 벗어나 뷰포트 폭 대부분을 쓰도록 "full-bleed" 처리해서, 문제가
-   60개든 그 이상이든 되도록 스크롤 없이 한눈에 다 보이게 한다. */
-#gradeBox { width: 96vw; max-width: 1800px; margin-left: 50%; transform: translateX(-50%); }
-table.gradeTbl { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 11.5px; }
-table.gradeTbl th, table.gradeTbl td { border: 1px solid var(--gold-line); padding: 3px 4px; text-align: center; }
-table.gradeTbl th { background: var(--gold-soft); color: var(--gold); font-family: var(--kserif); font-weight: 700; white-space: nowrap; }
-table.gradeTbl td.nameCell { text-align: left; font-weight: 700; white-space: nowrap; background: #fff; position: sticky; left: 0; }
-table.gradeTbl td.classCell { color: rgba(26,26,26,.5); font-size: 11px; white-space: nowrap; }
-.gradeCell { cursor: pointer; width: 22px; height: 24px; font-weight: 800; user-select: none; }
-.gradeCell[data-v="0"] { color: rgba(26,26,26,.3); }
-.gradeCell[data-v="1"] { color: var(--mint-deep); background: var(--mint-soft); }
-.gradeCell[data-v="2"] { color: var(--pink-deep); background: var(--pink-soft); }
-.gradeCell[data-v="3"] { color: #a8752f; background: rgba(168,133,63,.16); }
-.scoreCell { font-weight: 800; color: var(--gold); white-space: nowrap; }
-.weightRow th { background: var(--mint-soft); }
-/* 기본 number input의 위아래 스피너 화살표가 이 좁은 칸(문항 하나당 칸
-   너비)에서 숫자 표시 공간을 거의 다 잡아먹어 값이 안 보이다시피 했음 —
-   스피너를 없애고 그 공간을 숫자 표시에 그대로 씀. */
-.weightInput { width: 34px; font-size: 11px; text-align: center; border: 1px solid var(--gold-line); border-radius: 2px; padding: 2px 1px; font-family: var(--sans); -moz-appearance: textfield; }
-.weightInput::-webkit-outer-spin-button, .weightInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-#weightTotalCell { color: var(--mint-deep); }
-
-.qkGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; margin: 10px 0; }
-.qkItem { border: 1px solid var(--gold-line); border-radius: 4px; padding: 6px 8px; background: #fff; text-align: center; font-size: 13px; }
-.qkNum { display: block; font-weight: 800; color: var(--gold); font-size: 11px; margin-bottom: 2px; }
-
-.commentItem { margin-bottom: 12px; }
-.commentItem label { display: block; font-weight: 700; font-size: 12.5px; color: var(--gold); margin-bottom: 4px; }
-.commentItem textarea { width: 100%; min-height: 84px; font-family: var(--sans); font-size: 12.5px; line-height: 1.6; padding: 8px; border: 1px solid var(--gold-line); border-radius: 4px; resize: vertical; }
-
-.savedList { max-height: 300px; overflow-y: auto; border: 1px solid var(--gold-line); border-radius: 4px; }
-.savedRow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--gold-line); font-size: 13px; }
-.savedRow:last-child { border-bottom: none; }
-.savedRowTitle { font-weight: 700; }
-.savedRowMeta { color: rgba(26,26,26,.5); font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.savedRow button { padding: 6px 10px; font-size: 11.5px; flex: 0 0 auto; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MATHY YURI'S CLINIC</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #111;
+            border-bottom: 2px solid #222;
+            padding-bottom: 10px;
+        }
+        .card {
+            border: 1px solid #e9ecef;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            background: #fff;
+        }
+        .btn {
+            background-color: #000;
+            color: #fff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background-color: #333;
+        }
+        .btn-secondary {
+            background-color: #e9ecef;
+            color: #495057;
+            margin-left: 8px;
+        }
+        .btn-secondary:hover {
+            background-color: #dee2e6;
+        }
+    </style>
 </head>
 <body>
 
-<a href="problembank.html" style="color:var(--gold);font-size:12px;text-decoration:none">&larr; 교재/시험지 관리로</a>
-<h1><span style="color:var(--gold)">MATHY YURI'S</span> CLINIC 교재 생성기</h1>
-<p class="subtitle">시험지를 업로드해서 예쁜 A4 클리닉 교재를 만들고, 바로 채점까지</p>
-
-<div class="box" id="savedBox">
-  <p class="stepTitle">저장된 클리닉 자료</p>
-  <p class="hint">교재를 생성할 때마다 이 브라우저에 자동으로 저장됩니다(이 컴퓨터에서만 보여요 — 문제은행과 달리 팀 전체 공유는 아닙니다). 클릭해서 다시 열어보거나 바로 채점으로 넘어갈 수 있어요.</p>
-  <div class="savedList" id="savedList"></div>
+<div class="container">
+    <h1>MATHY YURI'S CLINIC — 관리자</h1>
+    <div id="quiz-list">
+        <!-- 생성된 클리닉 목록이 여기에 출력됩니다 -->
+    </div>
 </div>
 
-<div class="box">
-  <p class="stepTitle">1. 시험지 업로드</p>
-  <div class="row">
-    <input type="file" id="fileInput" accept=".hwpx">
-    <button id="parseBtn" disabled>불러오기</button>
-  </div>
-  <p class="hint" id="parseHint"></p>
-</div>
-
-<div class="box" id="qBox" style="display:none">
-  <p class="stepTitle">2. 문제 선택 (기본 전체 선택)</p>
-  <div class="row">
-    <button id="selAllBtn" class="secondary">전체 선택/해제</button>
-    <span class="hint" id="qCountHint"></span>
-  </div>
-  <div class="qList" id="qList"></div>
-</div>
-
-<div class="box" id="titleBox" style="display:none">
-  <p class="stepTitle">3. 교재 제목</p>
-  <div class="row">
-    <label class="hint">출제 날짜 <input type="date" id="issueDate"></label>
-    <label class="hint">Vol. <input type="number" id="volNum" min="1" style="width:70px"></label>
-    <label class="hint"><input type="checkbox" id="titleOverrideChk"> 제목 직접 입력</label>
-  </div>
-  <input type="text" id="titleOverrideInput" style="width:100%;margin-top:8px;display:none" placeholder="제목 직접 입력">
-  <div class="titlePreview" id="titlePreview"></div>
-  <button id="generateBtn">교재 HTML 생성 (다운로드)</button>
-  <button id="saveToBankBtn" class="secondary">문제은행에도 저장</button>
-  <p class="hint" id="genHint"></p>
-</div>
-
-<div class="box" id="keyBox" style="display:none">
-  <p class="stepTitle">4. 정답·해설 자료</p>
-  <p class="hint">선택된 문제의 빠른정답표와 해설을 모아 학생용 교재와는 별도의 HTML로 만듭니다.</p>
-  <button id="generateKeyBtn" class="secondary">정답·해설 HTML 생성 (다운로드)</button>
-  <p class="hint" id="keyHint"></p>
-</div>
-
-<div class="box" id="gradeBox" style="display:none">
-  <p class="stepTitle">5. 채점 (선택)</p>
-  <p class="hint">위에서 만든 교재를 학생들에게 풀리고 채점한 결과를 저장합니다. 저장하려는 카테고리 시트가 구글시트에 미리 있어야 합니다(없으면 "카테고리설정" 탭에 한 줄 추가). "명단 불러오기"는 누를 때마다 기존 목록에 추가되므로, S반/S+반처럼 같은 교재를 같이 푼 여러 반을 차례로 불러와 한 표에서 채점할 수 있습니다.</p>
-  <div class="row">
-    <label class="hint">기수
-      <select id="gradeCohort"><option value="2">2기</option><option value="3">3기</option></select>
-    </label>
-    <label class="hint">반 <input type="text" id="gradeClass" placeholder="예: S+" style="width:80px"></label>
-    <label class="hint">카테고리 <input type="text" id="gradeCategory" value="클리닉" style="width:100px"></label>
-    <label class="hint">미션명(시험명) <input type="text" id="gradeMission" style="width:260px"></label>
-    <button id="loadRosterBtn" class="secondary">명단 불러오기(추가)</button>
-    <button id="resetRosterBtn" class="secondary">명단 초기화</button>
-  </div>
-  <p class="hint" id="gradeHint"></p>
-  <div class="row" id="gradeToolsRow" style="display:none;margin-top:8px">
-    <button id="markAllCorrectBtn" class="secondary">전체 정답으로 표시</button>
-    <span class="hint">칸을 클릭하면 -(미확인) → O(맞음) → X(틀림) → △(오답완료) 순으로 바뀝니다.</span>
-  </div>
-  <div id="gradeArea"></div>
-  <div class="row" style="margin-top:10px">
-    <button id="saveScoresBtn" style="display:none">채점 결과 저장</button>
-    <button id="genReportBtn" class="secondary">채점 리포트 생성 (관리자+개별)</button>
-  </div>
-  <p class="hint" id="saveHint"></p>
-  <p class="hint" id="reportHint"></p>
-  <div id="reportCommentBox" style="display:none;margin-top:14px">
-    <p class="stepTitle">Mathy Yuri 코멘트 검토/수정 (학부모 공지용)</p>
-    <p class="hint">학생마다 자동으로 생성된 코멘트입니다. 학부모님께 보내는 글이니 내용을 확인하고 필요하면 직접 수정한 뒤 다운로드하세요.</p>
-    <div id="reportCommentArea"></div>
-    <button id="downloadReportBtn" style="margin-top:10px">리포트 HTML 다운로드</button>
-  </div>
-</div>
-
-<!-- 오답노트 시스템(hwpx-lib.js 공유)과는 별개로 동작하도록 독립된
-     clinicmaker.js를 씀 — 다른 도구들과 동일하게 매번 새 쿼리스트링으로
-     캐시 무력화. 이 위치(모든 요소가 파싱된 뒤)에서 불러와야 클리닉메이커
-     자체의 최상위 addEventListener 등록이 null을 만나지 않는다. -->
-<script>document.write('<script src="clinicmaker.js?v=' + Date.now() + '"><\/script>');</script>
-
+<script src="clinicmaker.js"></script>
 </body>
 </html>
