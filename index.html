@@ -73,6 +73,13 @@ table.gradeTbl td.classCell { color: rgba(26,26,26,.5); font-size: 11px; white-s
 .gradeCell[data-v="2"] { color: var(--pink-deep); background: var(--pink-soft); }
 .gradeCell[data-v="3"] { color: #a8752f; background: rgba(168,133,63,.16); }
 .scoreCell { font-weight: 800; color: var(--gold); white-space: nowrap; }
+.weightRow th { background: var(--mint-soft); }
+/* 기본 number input의 위아래 스피너 화살표가 이 좁은 칸(문항 하나당 칸
+   너비)에서 숫자 표시 공간을 거의 다 잡아먹어 값이 안 보이다시피 했음 —
+   스피너를 없애고 그 공간을 숫자 표시에 그대로 씀. */
+.weightInput { width: 34px; font-size: 11px; text-align: center; border: 1px solid var(--gold-line); border-radius: 2px; padding: 2px 1px; font-family: var(--sans); -moz-appearance: textfield; }
+.weightInput::-webkit-outer-spin-button, .weightInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+#weightTotalCell { color: var(--mint-deep); }
 
 .qkGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; margin: 10px 0; }
 .qkItem { border: 1px solid var(--gold-line); border-radius: 4px; padding: 6px 8px; background: #fff; text-align: center; font-size: 13px; }

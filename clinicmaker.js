@@ -1386,6 +1386,7 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
     const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
     if (!selected.length) throw new Error('선택된 문제가 없습니다.');
     let quickRows = '';
+    const explMap = {};
     for (const num of selected) {
       const marker = parsedEntry.markers.get(num);
       const answerXml = extractQuickAnswerXml(marker.blockXml);
@@ -1395,16 +1396,17 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
       // 보이도록 맨 앞에서 한 번만 제거(문두에 있을 때만 지움 — 답 안에
       // 우연히 같은 글자가 있어도 건드리지 않음).
       answerHtml = answerHtml.replace(/^\s*\[정답\]\s*/, '');
+      quickRows += `<div class="qkItem" data-num="${num}"><span class="qkNum">${num}</span>${answerHtml}</div>`;
 
-      // "여기 버튼을 누르면 해설이 보이게" — 빠른정답표 칸 자체가 곧
-      // 그 문제의 해설을 펼치는 버튼이 되도록, 별도의 해설 목록 없이 답과
-      // 해설을 한 항목(details/summary)으로 합쳤다. 펼쳐지면 그리드 한 칸을
-      // 넘어 한 줄 전체를 차지하도록 CSS에서 처리(.qkItem[open]).
+      // 답을 누를 때마다 그리드 칸 하나하나가 커졌다 줄었다 하면 보기
+      // 불편하다는 피드백 — 그리드는 그대로 두고, 그 아래 고정된 패널 하나만
+      // 클릭한 번호에 맞춰 내용이 바뀌도록 변경(번호를 눌러도 그리드
+      // 레이아웃 자체는 흔들리지 않음).
       const explXml = extractEndnoteFullBodyXml(marker.blockXml);
       const explHtml = explXml ? await hwpBodyXmlToHtml(explXml, parsedEntry) : '<p class="hint">(해설 인식 실패)</p>';
-      quickRows += `<details class="qkItem"><summary><span class="qkNum">${num}</span>${answerHtml}</summary><div class="qkExpl">${explHtml}</div></details>`;
+      explMap[num] = explHtml;
     }
-    downloadKeyHtml(currentTitle(), quickRows);
+    downloadKeyHtml(currentTitle(), quickRows, explMap);
     hint.textContent = `완료 — ${selected.length}문제`;
     hint.className = 'hint ok';
   } catch (e) {
@@ -1416,7 +1418,10 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
   }
 });
 
-function downloadKeyHtml(title, quickRows) {
+function downloadKeyHtml(title, quickRows, explMap) {
+  // JSON 안에 우연히 "</script"가 들어있으면 스크립트 태그가 거기서 끊기니
+  // (해설 원문에 나올 일은 거의 없지만) 방어적으로 이스케이프.
+  const explMapJson = JSON.stringify(explMap).replace(/<\/script/gi, '<\\/script');
   const html = `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtml(title)} — 정답·해설</title>
@@ -1425,29 +1430,43 @@ function downloadKeyHtml(title, quickRows) {
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
 <style>
-:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;}
+:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;--mint-deep:#3E8F79;--mint-soft:rgba(127,200,180,.14);}
 *{box-sizing:border-box}
 body{font-family:'Noto Sans KR',sans-serif;max-width:900px;margin:30px auto;padding:0 4vw 60px;background:var(--cream);color:var(--ink);line-height:1.6}
 h1{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:22px;border-bottom:2px solid var(--ink);padding-bottom:6px}
 h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:16px;color:var(--gold);margin-top:28px}
 .qkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:12px 0}
-.qkItem{border:1px solid var(--gold-line);border-radius:4px;padding:6px 8px;background:#fff;font-size:13px}
-.qkItem summary{cursor:pointer;list-style:none;text-align:center}
-.qkItem summary::-webkit-details-marker{display:none}
-.qkItem summary::after{content:' ▸';color:var(--gold);font-size:10px}
-.qkItem[open] summary::after{content:' ▾'}
-.qkItem[open]{grid-column:1/-1;text-align:left}
+.qkItem{border:1px solid var(--gold-line);border-radius:4px;padding:6px 8px;background:#fff;font-size:13px;text-align:center;cursor:pointer;user-select:none}
+.qkItem:hover{border-color:var(--mint-deep)}
+.qkItem.active{border-color:var(--mint-deep);background:var(--mint-soft);box-shadow:inset 0 0 0 1px var(--mint-deep)}
 .qkNum{display:block;font-weight:800;color:var(--gold);font-size:11px;margin-bottom:2px}
-.qkExpl{margin-top:10px;padding-top:10px;border-top:1px solid var(--gold-line);font-size:13px}
+.explPanel{margin-top:14px;background:#fff;border:1px solid var(--gold-line);border-radius:6px;padding:16px;min-height:60px;font-size:13px;position:sticky;top:12px}
+.explPanel .explNum{font-weight:800;color:var(--mint-deep);margin-bottom:8px;font-size:14px}
 img{max-width:100%;height:auto}
 table{border-collapse:collapse}
 td{border:1px solid var(--gold-line);padding:2px 6px}
-@media print{body{background:#fff}}
+@media print{body{background:#fff}.explPanel{position:static}}
 </style></head><body>
 <h1>${escapeHtml(title)} — 정답·해설</h1>
-<h2>빠른정답 <small style="font-family:'Noto Sans KR',sans-serif;font-weight:500;font-size:12px;color:rgba(26,26,26,.55)">— 칸을 클릭하면 그 문제의 해설이 펼쳐집니다</small></h2>
+<h2>빠른정답 <small style="font-family:'Noto Sans KR',sans-serif;font-weight:500;font-size:12px;color:rgba(26,26,26,.55)">— 번호를 클릭하면 아래에 그 문제의 해설이 나옵니다</small></h2>
 <div class="qkGrid">${quickRows}</div>
-<script>document.addEventListener('DOMContentLoaded',()=>{renderMathInElement(document.body,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});});<\/script>
+<div class="explPanel" id="explPanel"><p class="hint" style="color:rgba(26,26,26,.5)">위에서 번호를 클릭하면 여기에 해설이 표시됩니다.</p></div>
+<script>
+const EXPL_MAP = ${explMapJson};
+document.addEventListener('DOMContentLoaded', () => {
+  renderMathInElement(document.body, { delimiters: [{ left: '\\\\(', right: '\\\\)', display: false }, { left: '\\\\[', right: '\\\\]', display: true }], throwOnError: false });
+  const panel = document.getElementById('explPanel');
+  document.querySelectorAll('.qkItem').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.qkItem.active').forEach(x => x.classList.remove('active'));
+      item.classList.add('active');
+      const num = item.dataset.num;
+      panel.innerHTML = '<div class="explNum">' + num + '번 해설</div>' + (EXPL_MAP[num] || '<p class="hint">(해설 인식 실패)</p>');
+      try { renderMathInElement(panel, { delimiters: [{ left: '\\\\(', right: '\\\\)', display: false }, { left: '\\\\[', right: '\\\\]', display: true }], throwOnError: false }); } catch (e) {}
+    });
+  });
+});
+<\/script>
 </body></html>`;
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1522,13 +1541,39 @@ document.getElementById('markAllCorrectBtn')?.addEventListener('click', () => {
   renderGradeGrid();
 });
 
+// 모든 채점은 100점 만점을 기준으로 한다 — 문항 수가 몇 개든(60문항이든
+// 몇 문항이든) 기본은 100점을 문항 수만큼 균등하게 나눈 배점이지만,
+// 선생님이 문항별로 직접 수정할 수 있다("배점" 행의 입력칸). gradeWeights는
+// 선택된 문제 구성이 바뀌지 않는 한(gradeWeightsKey로 판별) 그대로
+// 유지되므로, 채점 도중 다시 그려져도 입력해둔 배점이 날아가지 않는다.
+let gradeWeights = {}; // num(문자열) -> 배점
+let gradeWeightsKey = '';
+function ensureEvenWeights(selected) {
+  const key = selected.join(',');
+  if (key === gradeWeightsKey) return;
+  gradeWeights = {};
+  const base = Math.round((100 / selected.length) * 100) / 100;
+  let allocated = 0;
+  selected.forEach((num, i) => {
+    const isLast = i === selected.length - 1;
+    const w = isLast ? Math.round((100 - allocated) * 100) / 100 : base;
+    gradeWeights[num] = w;
+    allocated += w;
+  });
+  gradeWeightsKey = key;
+}
+
 function renderGradeGrid() {
   const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
   const area = document.getElementById('gradeArea');
   if (!gradeStudents.length) { area.innerHTML = '<p class="hint">불러온 학생이 없습니다.</p>'; return; }
+  ensureEvenWeights(selected);
   let html = '<div style="overflow-x:auto"><table class="gradeTbl"><tr><th>이름</th><th>반</th>';
   for (const num of selected) html += `<th>${num}</th>`;
   html += '<th>점수</th></tr>';
+  html += '<tr class="weightRow"><th colspan="2">배점(100점 기준)</th>';
+  for (const num of selected) html += `<th><input type="number" class="weightInput" data-num="${num}" value="${gradeWeights[num]}" step="0.1" min="0"></th>`;
+  html += `<th id="weightTotalCell">${weightSum().toFixed(1)}</th></tr>`;
   for (const s of gradeStudents) {
     html += `<tr data-name="${escapeHtml(s.name)}"><td class="nameCell">${escapeHtml(s.name)}</td><td class="classCell">${escapeHtml(s.class || '')}</td>`;
     for (const num of selected) {
@@ -1551,13 +1596,29 @@ function renderGradeGrid() {
       updateScoreCell(cell.closest('tr'), name, selected.length);
     });
   });
+  area.querySelectorAll('.weightInput').forEach(input => {
+    input.addEventListener('input', () => {
+      gradeWeights[input.dataset.num] = Number(input.value) || 0;
+      const totalCell = document.getElementById('weightTotalCell');
+      if (totalCell) totalCell.textContent = weightSum().toFixed(1);
+      gradeStudents.forEach(s => updateScoreCell(area.querySelector(`tr[data-name="${CSS.escape(s.name)}"]`), s.name, selected.length));
+    });
+  });
   gradeStudents.forEach(s => updateScoreCell(area.querySelector(`tr[data-name="${CSS.escape(s.name)}"]`), s.name, selected.length));
+}
+function weightSum() {
+  return Object.values(gradeWeights).reduce((a, b) => a + b, 0);
 }
 function updateScoreCell(tr, name, total) {
   if (!tr) return;
-  const correct = Object.values(gradeItems[name]).filter(v => v === 1).length;
-  const answered = Object.keys(gradeItems[name]).length;
-  tr.querySelector('[data-role="score"]').textContent = answered ? `${correct}/${answered}` : '-';
+  const items = gradeItems[name] || {};
+  let score = 0, correct = 0;
+  const answered = Object.keys(items).length;
+  for (const [num, v] of Object.entries(items)) {
+    if (v === 1) { correct++; score += gradeWeights[num] || 0; }
+  }
+  score = Math.round(score * 10) / 10;
+  tr.querySelector('[data-role="score"]').textContent = answered ? `${score}점 (${correct}/${total})` : '-';
 }
 
 // 명단이 여러 반(class)에서 누적됐을 수 있으므로, saveexamscores를 반별로
@@ -1570,6 +1631,10 @@ document.getElementById('saveScoresBtn').addEventListener('click', async () => {
   const category = document.getElementById('gradeCategory').value.trim();
   const mission = document.getElementById('gradeMission').value.trim();
   const maxNum = Math.max(...selected);
+  // 채점표의 "배점" 행에서 직접 입력/수정한 값을 그대로 사용 — 기본은
+  // 100점을 균등 배분한 값이지만 선생님이 바꿨으면 그 값을 보낸다.
+  const weights = [];
+  for (let n = 1; n <= maxNum; n++) weights.push(gradeWeights[String(n)] || 0);
   const byClass = new Map();
   for (const s of gradeStudents) {
     const items = [];
@@ -1583,7 +1648,7 @@ document.getElementById('saveScoresBtn').addEventListener('click', async () => {
   hint.className = 'hint';
   try {
     for (const [cls, entries] of byClass) {
-      await callPost({ action: 'saveexamscores', key: TEACHER_KEY, cohort, category, class: cls, mission, entries });
+      await callPost({ action: 'saveexamscores', key: TEACHER_KEY, cohort, category, class: cls, mission, entries, weights });
     }
     hint.textContent = `저장 요청을 보냈습니다 (${[...byClass.keys()].join(', ')}반, 총 ${gradeStudents.length}명). POST 응답은 확인할 수 없으니, 잠시 후 다시 불러와 확인해보세요.`;
     hint.className = 'hint ok';
