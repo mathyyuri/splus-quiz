@@ -848,11 +848,133 @@ async function callPost(body) {
     body: JSON.stringify(body),
   });
 }
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// ---------- 0. 저장된 클리닉 자료(구글 드라이브 문제은행에 연동) ----------
+// 구글시트에 새 탭/전용 저장 공간을 직접 만들 방법이 없어서(Apps Script
+// 코드 자체를 고칠 권한이 없음), 이미 배포되어 있는 문제은행 저장 API
+// (problembank.html이 쓰는 것과 동일한 action=upload/list/download/delete)를
+// 그대로 재사용한다 — 교재를 생성할 때마다 자동으로 문제은행에 함께
+// 올라가고, 그중 memo에 "MATHY YURI'S CLINIC"이 들어있는 것만 걸러서 이
+// 목록에 보여준다. 문제은행에 같이 섞여 보이는 것은 확인받음(다른 컴퓨터
+// 에서도 목록이 그대로 보이는 게 목적이라 문제은행처럼 드라이브 공유
+// 저장소를 통하는 것 외엔 방법이 없었음).
+const CLINIC_MEMO_MARKER = "MATHY YURI'S CLINIC";
+function arrayBufferToBase64(buf) {
+  return btoa(new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ''));
+}
+
+async function renderSavedList() {
+  const el = document.getElementById('savedList');
+  el.innerHTML = '<p class="hint" style="padding:10px 4px">불러오는 중...</p>';
+  let files;
+  try {
+    const data = await callGet({ action: 'list' });
+    files = (data.files || []).filter(f => (f.memo || '').includes(CLINIC_MEMO_MARKER));
+    files.sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0));
+  } catch (e) {
+    el.innerHTML = `<p class="hint err">불러오기 실패: ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (!files.length) { el.innerHTML = '<p class="hint" style="padding:10px 4px">아직 저장된 자료가 없습니다. 교재를 생성하면 자동으로 문제은행에 올라가고 여기 표시됩니다.</p>'; return; }
+  el.innerHTML = files.map(f => `
+    <div class="savedRow">
+      <div style="flex:1;min-width:0">
+        <div class="savedRowTitle">${escapeHtml(f.memo || f.filename)}</div>
+        <div class="savedRowMeta">${escapeHtml(f.filename)} · ${f.uploadedAt ? escapeHtml(new Date(f.uploadedAt).toLocaleString('ko-KR')) : ''}</div>
+      </div>
+      <button type="button" class="secondary" data-act="reopen" data-id="${f.id}">다시 열기</button>
+      <button type="button" data-act="grade" data-id="${f.id}">바로 채점</button>
+      <button type="button" class="secondary" data-act="delete" data-id="${f.id}">삭제</button>
+    </div>`).join('');
+}
+
+async function loadSavedWorksheet(id, forGrading) {
+  const hint = document.getElementById('parseHint');
+  hint.textContent = '저장된 자료 불러오는 중...';
+  hint.className = 'hint';
+  const data = await callGet({ action: 'download', id });
+  const file = data.file;
+  if (!file) throw new Error('저장된 자료를 찾을 수 없습니다(삭제되었을 수 있어요).');
+  const buf = base64ToArrayBuffer(file.data);
+  rawFileBuf = buf;
+  rawFilename = file.filename;
+  const zipData = await JSZip.loadAsync(buf);
+  parsedEntry = await parseHwpx(zipData);
+  parsedEntry.filename = file.filename;
+  questionNums = [...parsedEntry.markers.keys()].sort((a, b) => Number(a) - Number(b));
+  await renderQuestionList();
+
+  let qd = [];
+  try { qd = JSON.parse(file.questionData || '[]'); } catch (e) {}
+  const includedSet = new Set(qd.filter(q => q.included).map(q => String(q.num)));
+  document.querySelectorAll('.qChk').forEach(chk => { chk.checked = includedSet.size ? includedSet.has(chk.value) : true; });
+  updateQCount();
+
+  document.getElementById('qBox').style.display = '';
+  document.getElementById('titleBox').style.display = '';
+  document.getElementById('keyBox').style.display = '';
+  document.getElementById('gradeBox').style.display = '';
+  if (!document.getElementById('issueDate').value) document.getElementById('issueDate').value = new Date().toISOString().slice(0, 10);
+  // 저장 당시의 정확한 제목(Vol./날짜 포함)을 그대로 복원 — memo가 곧 그때의
+  // 완성된 제목 문자열이므로, "제목 직접 입력"에 그대로 채워 넣으면 된다.
+  if (file.memo) {
+    document.getElementById('titleOverrideChk').checked = true;
+    document.getElementById('titleOverrideInput').style.display = '';
+    document.getElementById('titleOverrideInput').value = file.memo;
+  }
+  updateTitlePreview();
+
+  hint.textContent = `"${file.memo || file.filename}" 불러옴 (전체 ${questionNums.length}문제 중 ${includedSet.size || questionNums.length}개 선택된 상태로 복원됨)`;
+  hint.className = 'hint ok';
+
+  if (forGrading) {
+    document.getElementById('gradeCategory').value = '클리닉';
+    document.getElementById('gradeMission').value = file.memo || '';
+    document.getElementById('gradeMission').dataset.auto = 'false';
+    document.getElementById('gradeBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+document.getElementById('savedList').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const act = btn.dataset.act;
+  if (act === 'delete') {
+    if (!confirm('이 저장 기록을 문제은행에서 삭제할까요?')) return;
+    btn.disabled = true;
+    try {
+      await callPost({ action: 'delete', id });
+      await renderSavedList();
+    } catch (err) {
+      alert('삭제 실패: ' + err.message);
+      btn.disabled = false;
+    }
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await loadSavedWorksheet(id, act === 'grade');
+  } catch (err) {
+    alert('불러오기 실패: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+renderSavedList();
 
 // ---------- 1. 업로드/파싱 ----------
 let parsedEntry = null;
 let questionNums = []; // ["1","2",...] parsed order
 let rawFilename = '';
+let rawFileBuf = null; // ArrayBuffer — 새로 업로드했든 저장된 자료를 다시 열었든 항상 최신 원본을 들고 있음(문제은행 저장 등에 재사용)
 
 document.getElementById('fileInput').addEventListener('change', () => {
   document.getElementById('parseBtn').disabled = !document.getElementById('fileInput').files.length;
@@ -867,6 +989,7 @@ document.getElementById('parseBtn').addEventListener('click', async () => {
   hint.className = 'hint';
   try {
     const buf = await file.arrayBuffer();
+    rawFileBuf = buf;
     const zipData = await JSZip.loadAsync(buf);
     parsedEntry = await parseHwpx(zipData);
     parsedEntry.filename = file.name;
@@ -993,6 +1116,20 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     const vol = document.getElementById('volNum').value || '1';
     downloadClinicHtml(title, pages, colWidthMm, colHeightMm, formattedDate(), vol);
     localStorage.setItem('clinicmaker_lastVol', document.getElementById('volNum').value || '1');
+    // "언제든 다시 확인할 수 있게" — 생성할 때마다 문제은행에도 자동으로
+    // 함께 올려서(원본 파일 + 그때 선택했던 문제 번호를 questionData의
+    // included 플래그로 같이 담아) 다른 컴퓨터에서도 목록이 그대로 보이고,
+    // 나중에 그대로 다시 열거나 바로 채점으로 넘어갈 수 있게 한다. 실패해도
+    // 다운로드 자체는 이미 끝난 뒤라 치명적이지 않으므로 조용히 무시.
+    try {
+      const selectedNums = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
+      const questionData = questionNums.map(num => ({
+        num, choiceCount: null, hasBogi: null, hasCondition: null, warnings: [], unit: '', type: '',
+        included: selectedNums.includes(num),
+      }));
+      await callPost({ action: 'upload', filename: rawFilename, data: arrayBufferToBase64(rawFileBuf), memo: title, questionData: JSON.stringify(questionData) });
+      await renderSavedList();
+    } catch (e) { /* 저장 실패는 조용히 무시 — 다운로드는 이미 완료됨 */ }
     hint.textContent = `완료 — ${blocks.length}문제, 문제 ${pages.length}페이지 (+앞표지/메모란/뒤표지 각 1페이지)`;
     hint.className = 'hint ok';
   } catch (e) {
@@ -1217,14 +1354,11 @@ document.addEventListener('DOMContentLoaded', function () {
 document.getElementById('saveToBankBtn').addEventListener('click', async () => {
   const btn = document.getElementById('saveToBankBtn');
   const hint = document.getElementById('genHint');
-  if (!document.getElementById('fileInput').files.length) { hint.textContent = '파일을 먼저 불러오세요.'; hint.className = 'hint err'; return; }
+  if (!rawFileBuf) { hint.textContent = '파일을 먼저 불러오세요.'; hint.className = 'hint err'; return; }
   btn.disabled = true;
   try {
-    const file = document.getElementById('fileInput').files[0];
-    const buf = await file.arrayBuffer();
-    const base64 = btoa(new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ''));
     const questionData = questionNums.map(num => ({ num, choiceCount: null, hasBogi: null, hasCondition: null, warnings: [], unit: '', type: '' }));
-    await callPost({ action: 'upload', filename: rawFilename, data: base64, memo: currentTitle(), questionData: JSON.stringify(questionData) });
+    await callPost({ action: 'upload', filename: rawFilename, data: arrayBufferToBase64(rawFileBuf), memo: currentTitle(), questionData: JSON.stringify(questionData) });
     hint.textContent = '문제은행에 저장 요청을 보냈습니다 (problembank.html에서 확인하고 태그를 채워주세요).';
     hint.className = 'hint ok';
   } catch (e) {
