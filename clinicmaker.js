@@ -1863,7 +1863,11 @@ function computeClassUnitAverage(stats) {
       agg[unit].total += u.total;
     }
   }
-  return agg;
+  const result = {};
+  for (const [unit, u] of Object.entries(agg)) {
+    result[unit] = u.total ? Math.round((u.correct / u.total) * 1000) / 10 : 0;
+  }
+  return result;
 }
 
 // 학부모님이 보는 안내문이라 존댓말(합니다체)로, 감상평이 아니라 수치
