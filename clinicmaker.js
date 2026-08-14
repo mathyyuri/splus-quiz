@@ -905,6 +905,7 @@ async function renderSavedList() {
     el.innerHTML = `<p class="hint err">불러오기 실패: ${escapeHtml(e.message)}</p>`;
     return;
   }
+  populateMissionSelect(files);
   if (!files.length) { el.innerHTML = '<p class="hint" style="padding:10px 4px">아직 저장된 자료가 없습니다. 교재를 생성하면 자동으로 문제은행에 올라가고 여기 표시됩니다.</p>'; return; }
   el.innerHTML = files.map(f => {
     const hasKey = Object.prototype.hasOwnProperty.call(keyIdByTitle, f.memo || '');
@@ -963,7 +964,7 @@ async function loadSavedWorksheet(id, forGrading) {
 
   if (forGrading) {
     document.getElementById('gradeCategory').value = '클리닉';
-    document.getElementById('gradeMission').value = file.memo || '';
+    setGradeMissionValue(file.memo || '');
     document.getElementById('gradeMission').dataset.auto = 'false';
     document.getElementById('gradeBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1103,7 +1104,7 @@ function updateTitlePreview() {
   document.getElementById('titlePreview').textContent = currentTitle();
   if (!document.getElementById('gradeMission').value.trim() ||
       document.getElementById('gradeMission').dataset.auto !== 'false') {
-    document.getElementById('gradeMission').value = currentTitle();
+    setGradeMissionValue(currentTitle());
     document.getElementById('gradeMission').dataset.auto = 'true';
   }
 }
@@ -1624,6 +1625,72 @@ document.addEventListener('DOMContentLoaded', () => {
   URL.revokeObjectURL(url);
   return html;
 }
+
+// ---------- 5.5 반/미션명을 직접 입력 대신 선택형으로 ----------
+// "S+"를 "s+"로 잘못 치거나 미션명에 오타가 하나라도 있으면 채점 명단
+// 조회(examroster)나 정답·해설 링크 매칭이 문자열을 정확히 맞춰야 해서
+// 조용히 실패한다 — 실제로 이런 사례가 있었다. 텍스트 입력 대신
+// 드롭다운으로 바꿔서 오타 자체가 나지 않게 한다. index.html처럼 별도
+// 파일을 건드릴 필요 없이, 기존 <input id="gradeClass">/<input id="gradeMission">
+// 을 여기서 통째로 <select>로 교체한다(id를 그대로 유지하므로 다른
+// 곳에서 .value로 읽는 코드는 손댈 필요가 없다).
+function replaceInputWithSelect(id) {
+  const input = document.getElementById(id);
+  if (!input || input.tagName === 'SELECT') return input;
+  const select = document.createElement('select');
+  select.id = id;
+  select.className = input.className;
+  const styleAttr = input.getAttribute('style');
+  if (styleAttr) select.setAttribute('style', styleAttr);
+  input.replaceWith(select);
+  return select;
+}
+const gradeClassSelect = replaceInputWithSelect('gradeClass');
+const gradeMissionSelect = replaceInputWithSelect('gradeMission');
+
+const COHORT_CLASS_OPTIONS = { '2': ['S+', 'S'], '3': ['PRISM'] };
+function populateClassSelect() {
+  if (!gradeClassSelect) return;
+  const cohort = document.getElementById('gradeCohort').value;
+  const prev = gradeClassSelect.value;
+  const opts = COHORT_CLASS_OPTIONS[cohort] || COHORT_CLASS_OPTIONS['2'];
+  gradeClassSelect.innerHTML = opts.map(c => `<option value="${c}">${c}</option>`).join('');
+  gradeClassSelect.value = opts.includes(prev) ? prev : opts[0];
+}
+document.getElementById('gradeCohort')?.addEventListener('change', populateClassSelect);
+populateClassSelect();
+
+// 미션명 드롭다운은 "저장된 클리닉 자료" 목록(실제로 저장된 적 있는
+// 제목들)으로 채운다 — renderSavedList가 그 목록을 불러올 때마다 같이
+// 갱신된다(savedFiles 인자로 재사용, 별도 조회 없음). 지금 화면에 떠
+// 있는 제목(currentTitle())이 아직 한 번도 저장 안 된 새 교재여도 선택
+// 가능하도록 항상 목록 맨 앞에 끼워 넣는다.
+function populateMissionSelect(savedFiles) {
+  if (!gradeMissionSelect) return;
+  const current = currentTitle();
+  const titles = [...new Set((savedFiles || []).map(f => f.memo).filter(Boolean))];
+  if (!titles.includes(current)) titles.unshift(current);
+  titles.sort((a, b) => b.localeCompare(a));
+  const wasAuto = gradeMissionSelect.dataset.auto !== 'false';
+  const prev = gradeMissionSelect.value;
+  gradeMissionSelect.innerHTML = titles.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  gradeMissionSelect.value = wasAuto ? current : (titles.includes(prev) ? prev : current);
+  gradeMissionSelect.dataset.auto = wasAuto ? 'true' : 'false';
+}
+// <select>는 존재하지 않는 옵션 값을 그냥 무시해버리므로(<input>과 달리
+// 실패가 조용히 일어남), 값을 세팅하기 전에 그 옵션이 없으면 먼저
+// 만들어 끼워 넣는다.
+function setGradeMissionValue(title) {
+  if (!gradeMissionSelect) { const el = document.getElementById('gradeMission'); if (el) el.value = title; return; }
+  if (![...gradeMissionSelect.options].some(o => o.value === title)) {
+    const opt = document.createElement('option');
+    opt.value = title;
+    opt.textContent = title;
+    gradeMissionSelect.insertBefore(opt, gradeMissionSelect.firstChild);
+  }
+  gradeMissionSelect.value = title;
+}
+gradeMissionSelect?.addEventListener('change', () => { gradeMissionSelect.dataset.auto = 'false'; });
 
 // ---------- 6. 채점 ----------
 const GRADE_SYMS = { 0: '-', 1: 'O', 2: 'X', 3: '△' };
