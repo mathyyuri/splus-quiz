@@ -1509,6 +1509,15 @@ document.getElementById('loadRosterBtn').addEventListener('click', async () => {
       (s.items || []).forEach((v, i) => { if (v >= 1 && v <= 3) gradeItems[s.name][i + 1] = v; });
       added++;
     }
+    // 이전에 저장할 때 배점을 균등에서 직접 수정했었다면, 그 배점도 O/X
+    // 기록과 함께 그대로 복원한다 — 없으면(처음 채점이라 저장 이력이 없으면)
+    // renderGradeGrid가 기본 균등 배점을 채운다.
+    if (Array.isArray(data.weights) && data.weights.length) {
+      const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
+      gradeWeights = {};
+      selected.forEach(num => { gradeWeights[num] = data.weights[Number(num) - 1] || 0; });
+      gradeWeightsKey = selected.join(',');
+    }
     renderGradeGrid();
     hint.textContent = `${added}명 추가됨${skipped ? ` (이미 불러온 ${skipped}명 제외)` : ''} — 전체 ${gradeStudents.length}명`;
     hint.className = 'hint ok';
