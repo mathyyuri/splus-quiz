@@ -907,7 +907,7 @@ async function renderSavedList() {
   }
   if (!files.length) { el.innerHTML = '<p class="hint" style="padding:10px 4px">아직 저장된 자료가 없습니다. 교재를 생성하면 자동으로 문제은행에 올라가고 여기 표시됩니다.</p>'; return; }
   el.innerHTML = files.map(f => {
-    const keyId = keyIdByTitle[f.memo || ''];
+    const hasKey = Object.prototype.hasOwnProperty.call(keyIdByTitle, f.memo || '');
     return `
     <div class="savedRow">
       <div style="flex:1;min-width:0">
@@ -916,7 +916,7 @@ async function renderSavedList() {
       </div>
       <button type="button" class="secondary" data-act="reopen" data-id="${f.id}">다시 열기</button>
       <button type="button" data-act="grade" data-id="${f.id}">바로 채점</button>
-      ${keyId ? `<button type="button" class="secondary" data-act="viewkey" data-keyid="${keyId}">해설 링크 복사</button>` : '<span class="hint" style="align-self:center">해설 없음</span>'}
+      ${hasKey ? `<button type="button" class="secondary" data-act="viewkey" data-mission="${escapeHtml(f.memo || '')}">해설 링크 복사</button>` : '<span class="hint" style="align-self:center">해설 없음</span>'}
       <button type="button" class="secondary" data-act="delete" data-id="${f.id}">삭제</button>
     </div>`;
   }).join('');
@@ -989,8 +989,12 @@ document.getElementById('savedList')?.addEventListener('click', async (e) => {
   if (act === 'viewkey') {
     // 이 링크는 로그인/TEACHER_KEY 없이도 열리는 공개 페이지(clinicanswer.html)
     // 로 연결돼, 학생·학부모 등 외부인에게 그대로 복사해 보내도 클릭만으로
-    // 정답·해설을 볼 수 있다.
-    const url = new URL('clinicanswer.html?id=' + encodeURIComponent(btn.dataset.keyid), location.href).href;
+    // 정답·해설을 볼 수 있다. id를 그대로 굳혀서 링크에 박아두면, 같은
+    // 클리닉의 해설을 다시 생성(재생성)했을 때 옛 id가 가리키던 자료가
+    // 지워지거나 옛 채로 남아 링크가 깨질 수 있어 — 미션명으로 담아
+    // clinicanswer.html이 열릴 때마다 그 미션의 "가장 최근" 해설을 다시
+    // 찾아 열도록 한다(항상 최신 상태를 가리키는 링크).
+    const url = new URL('clinicanswer.html?mission=' + encodeURIComponent(btn.dataset.mission), location.href).href;
     window.open(url, '_blank');
     const orig = btn.textContent;
     const restore = () => { btn.textContent = orig; };
@@ -1448,11 +1452,17 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
     // API(action=upload, 키 불필요)에 채점표/원본 시험지와는 다른 마커로
     // 올려서 index.html이 미션명으로 찾아 열 수 있게 한다. 실패해도
     // 다운로드는 이미 끝난 뒤라 조용히 무시.
+    // 파일 확장자는 일부러 .html이 아니라 .txt로 올린다 — 구글 드라이브
+    // 계정 설정에 따라 업로드된 .html 파일이 자동으로 구글 문서로
+    // 변환되어(원본 바이트가 아니게 됨) 나중에 그대로 못 읽어오는 경우가
+    // 있어, 실제로 "해설을 찾을 수 없습니다" 오류가 재현됐다 — 어차피
+    // clinicanswer.html이 내용을 텍스트로 직접 디코딩해 쓰므로 확장자는
+    // 상관없고, .txt는 그런 자동 변환 대상이 되지 않는다.
     try {
       const bytes = new TextEncoder().encode(keyHtml).buffer;
       await callPost({
         action: 'upload',
-        filename: `${title} - 정답해설.html`,
+        filename: `${title} - 정답해설.txt`,
         data: arrayBufferToBase64(bytes),
         memo: `${CLINIC_KEY_MARKER} ${title}`,
         questionData: JSON.stringify({ mission: title }),
@@ -1863,11 +1873,7 @@ function computeClassUnitAverage(stats) {
       agg[unit].total += u.total;
     }
   }
-  const result = {};
-  for (const [unit, u] of Object.entries(agg)) {
-    result[unit] = u.total ? Math.round((u.correct / u.total) * 1000) / 10 : 0;
-  }
-  return result;
+  return agg;
 }
 
 // 학부모님이 보는 안내문이라 존댓말(합니다체)로, 감상평이 아니라 수치
