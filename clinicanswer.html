@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MATHY YURI'S CLINIC — 정답·해설</title>
+<style>
+body{font-family:'Noto Sans KR',sans-serif;background:#D9F0E6;color:#1A1A1A;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:6vw}
+.msg{max-width:420px}
+.msg h1{font-size:16px;margin-bottom:10px}
+.msg p{font-size:13px;color:rgba(26,26,26,.6);line-height:1.6}
+</style>
+</head><body>
+<div class="msg" id="msg"><h1>불러오는 중...</h1><p>정답·해설을 불러오고 있습니다.</p></div>
+<script>
+// 이 페이지는 clinicmaker.js가 문제은행에 함께 올려둔 정답·해설 HTML을
+// id 하나만으로(로그인/키 없이) 그대로 열어주는 공유용 뷰어다 — 선생님이
+// "저장된 클리닉 자료"에서 해설 링크를 복사해 학생/학부모에게 그대로
+// 보내면, 받은 사람은 클릭만으로 이 페이지에서 바로 해설을 볼 수 있다.
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynxupIBGMhIb6knPPTzCgQ3No_nId6YdjoKsvoFGZAEk4HkVztI0a6Wto5UfUww8e1/exec';
+const CLINIC_KEY_MARKER = 'MYC_ANSWER_KEY_v1';
+
+function showMsg(title, body) {
+  document.getElementById('msg').innerHTML = '<h1>' + title + '</h1><p>' + body + '</p>';
+}
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+function callGet(params) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'jsonp_cb_' + Date.now();
+    const timer = setTimeout(() => { cleanup(); reject(new Error('요청 시간 초과')); }, 30000);
+    const script = document.createElement('script');
+    function cleanup() { clearTimeout(timer); delete window[cbName]; script.remove(); }
+    window[cbName] = (data) => { cleanup(); if (!data.ok) reject(new Error(data.error || '서버 오류')); else resolve(data); };
+    script.src = APPS_SCRIPT_URL + '?' + new URLSearchParams({ ...params, callback: cbName }).toString();
+    script.onerror = () => { cleanup(); reject(new Error('스크립트 로드 실패')); };
+    document.body.appendChild(script);
+  });
+}
+
+(async () => {
+  const id = new URLSearchParams(location.search).get('id');
+  if (!id) { showMsg('링크가 올바르지 않습니다', '해설 링크에 id 값이 없습니다.'); return; }
+  try {
+    const data = await callGet({ action: 'download', id });
+    const file = data.file;
+    if (!file || !(file.memo || '').includes(CLINIC_KEY_MARKER)) {
+      showMsg('해설을 찾을 수 없습니다', '이 링크가 가리키는 자료가 정답·해설 파일이 아니거나 삭제되었습니다.');
+      return;
+    }
+    const html = new TextDecoder().decode(base64ToArrayBuffer(file.data));
+    document.open();
+    document.write(html);
+    document.close();
+  } catch (e) {
+    showMsg('불러오기 실패', e.message || '잠시 후 다시 시도해주세요.');
+  }
+})();
+</script>
+</body></html>

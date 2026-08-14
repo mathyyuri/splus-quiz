@@ -865,6 +865,12 @@ function base64ToArrayBuffer(base64) {
 // 에서도 목록이 그대로 보이는 게 목적이라 문제은행처럼 드라이브 공유
 // 저장소를 통하는 것 외엔 방법이 없었음).
 const CLINIC_MEMO_MARKER = "MATHY YURI'S CLINIC";
+// 정답·해설 HTML을 문제은행에 공유 업로드할 때 쓰는 전용 마커 — 위
+// CLINIC_MEMO_MARKER 문자열을 포함하지 않게 따로 둬서, "저장된 클리닉
+// 자료" 목록(원본 시험지 기반, 다시 열기/바로 채점용)에 해설 파일이
+// 섞여 들어가 목록이 깨지는 일이 없게 한다(index.html이 이 마커로 따로
+// 찾아서 연다).
+const CLINIC_KEY_MARKER = 'MYC_ANSWER_KEY_v1';
 function arrayBufferToBase64(buf) {
   return btoa(new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ''));
 }
@@ -878,17 +884,31 @@ async function renderSavedList() {
   // — index.html과 clinicmaker.js는 항상 같이 최신으로 맞춰야 함).
   if (!el) return;
   el.innerHTML = '<p class="hint" style="padding:10px 4px">불러오는 중...</p>';
-  let files;
+  let files, keyIdByTitle;
   try {
     const data = await callGet({ action: 'list' });
-    files = (data.files || []).filter(f => (f.memo || '').includes(CLINIC_MEMO_MARKER));
+    const all = data.files || [];
+    // 정답·해설 공유 업로드(memo가 CLINIC_KEY_MARKER로 시작)는 원본 시험지가
+    // 아니라 "다시 열기/바로 채점"이 통하지 않으니, memo에 우연히
+    // CLINIC_MEMO_MARKER 문자열이 겹쳐도 이 목록에서는 반드시 제외한다.
+    files = all.filter(f => (f.memo || '').includes(CLINIC_MEMO_MARKER) && !(f.memo || '').startsWith(CLINIC_KEY_MARKER));
     files.sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0));
+    // 정답·해설 공유 업로드는 memo가 "MYC_ANSWER_KEY_v1 <제목>" 형태라,
+    // 뒤쪽 제목만 잘라내 그 제목의 원본 시험지 memo(=제목 그대로)와
+    // 매칭시키면 어떤 저장된 교재에 해설이 이미 있는지 알 수 있다.
+    keyIdByTitle = {};
+    all.filter(f => (f.memo || '').startsWith(CLINIC_KEY_MARKER)).forEach(f => {
+      const title = f.memo.slice(CLINIC_KEY_MARKER.length).trim();
+      keyIdByTitle[title] = f.id;
+    });
   } catch (e) {
     el.innerHTML = `<p class="hint err">불러오기 실패: ${escapeHtml(e.message)}</p>`;
     return;
   }
   if (!files.length) { el.innerHTML = '<p class="hint" style="padding:10px 4px">아직 저장된 자료가 없습니다. 교재를 생성하면 자동으로 문제은행에 올라가고 여기 표시됩니다.</p>'; return; }
-  el.innerHTML = files.map(f => `
+  el.innerHTML = files.map(f => {
+    const keyId = keyIdByTitle[f.memo || ''];
+    return `
     <div class="savedRow">
       <div style="flex:1;min-width:0">
         <div class="savedRowTitle">${escapeHtml(f.memo || f.filename)}</div>
@@ -896,8 +916,10 @@ async function renderSavedList() {
       </div>
       <button type="button" class="secondary" data-act="reopen" data-id="${f.id}">다시 열기</button>
       <button type="button" data-act="grade" data-id="${f.id}">바로 채점</button>
+      ${keyId ? `<button type="button" class="secondary" data-act="viewkey" data-keyid="${keyId}">해설 링크 복사</button>` : '<span class="hint" style="align-self:center">해설 없음</span>'}
       <button type="button" class="secondary" data-act="delete" data-id="${f.id}">삭제</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function loadSavedWorksheet(id, forGrading) {
@@ -961,6 +983,19 @@ document.getElementById('savedList')?.addEventListener('click', async (e) => {
     } catch (err) {
       alert('삭제 실패: ' + err.message);
       btn.disabled = false;
+    }
+    return;
+  }
+  if (act === 'viewkey') {
+    // 이 링크는 로그인/TEACHER_KEY 없이도 열리는 공개 페이지(clinicanswer.html)
+    // 로 연결돼, 학생·학부모 등 외부인에게 그대로 복사해 보내도 클릭만으로
+    // 정답·해설을 볼 수 있다.
+    const url = new URL('clinicanswer.html?id=' + encodeURIComponent(btn.dataset.keyid), location.href).href;
+    window.open(url, '_blank');
+    const orig = btn.textContent;
+    const restore = () => { btn.textContent = orig; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => { btn.textContent = '링크 복사됨'; setTimeout(restore, 1500); }).catch(() => {});
     }
     return;
   }
@@ -1406,7 +1441,23 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
       const explHtml = explXml ? await hwpBodyXmlToHtml(explXml, parsedEntry) : '<p class="hint">(해설 인식 실패)</p>';
       explMap[num] = explHtml;
     }
-    downloadKeyHtml(currentTitle(), quickRows, explMap);
+    const title = currentTitle();
+    const keyHtml = downloadKeyHtml(title, quickRows, explMap);
+    // 학생이 로그인(index.html)해서 자기 클리닉 해설을 볼 수 있으려면 이
+    // 완성된 정답·해설 HTML이 어딘가에 남아있어야 한다 — 문제은행 저장
+    // API(action=upload, 키 불필요)에 채점표/원본 시험지와는 다른 마커로
+    // 올려서 index.html이 미션명으로 찾아 열 수 있게 한다. 실패해도
+    // 다운로드는 이미 끝난 뒤라 조용히 무시.
+    try {
+      const bytes = new TextEncoder().encode(keyHtml).buffer;
+      await callPost({
+        action: 'upload',
+        filename: `${title} - 정답해설.html`,
+        data: arrayBufferToBase64(bytes),
+        memo: `${CLINIC_KEY_MARKER} ${title}`,
+        questionData: JSON.stringify({ mission: title }),
+      });
+    } catch (e) { /* 해설 공유 업로드 실패는 조용히 무시 — 다운로드는 이미 완료됨 */ }
     hint.textContent = `완료 — ${selected.length}문제`;
     hint.className = 'hint ok';
   } catch (e) {
@@ -1429,6 +1480,8 @@ function downloadKeyHtml(title, quickRows, explMap) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
 <style>
 :root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;--mint-deep:#3E8F79;--mint-soft:rgba(127,200,180,.14);}
 *{box-sizing:border-box}
@@ -1445,12 +1498,22 @@ h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:16px;color:var(--
 img{max-width:100%;height:auto}
 table{border-collapse:collapse}
 td{border:1px solid var(--gold-line);padding:2px 6px}
-@media print{body{background:#fff}.explPanel{position:static}}
+.exportBar{position:fixed;top:16px;right:16px;z-index:999;display:flex;gap:8px}
+.exportBar button{background:var(--ink);color:var(--cream);border:none;padding:10px 18px;border-radius:6px;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.28)}
+.exportBar button:hover:not(:disabled){background:var(--mint-deep)}
+.exportBar button:disabled{opacity:.6;cursor:default}
+@media print{body{background:#fff}.explPanel{position:static}.exportBar{display:none}}
 </style></head><body>
+<div class="exportBar">
+  <button type="button" id="saveImgBtn">이미지로 저장</button>
+  <button type="button" id="savePdfBtn">PDF로 저장</button>
+</div>
+<div id="keyCapture">
 <h1>${escapeHtml(title)} — 정답·해설</h1>
 <h2>빠른정답 <small style="font-family:'Noto Sans KR',sans-serif;font-weight:500;font-size:12px;color:rgba(26,26,26,.55)">— 번호를 클릭하면 아래에 그 문제의 해설이 나옵니다</small></h2>
 <div class="qkGrid">${quickRows}</div>
 <div class="explPanel" id="explPanel"><p class="hint" style="color:rgba(26,26,26,.5)">위에서 번호를 클릭하면 여기에 해설이 표시됩니다.</p></div>
+</div>
 <script>
 const EXPL_MAP = ${explMapJson};
 document.addEventListener('DOMContentLoaded', () => {
@@ -1465,6 +1528,78 @@ document.addEventListener('DOMContentLoaded', () => {
       try { renderMathInElement(panel, { delimiters: [{ left: '\\\\(', right: '\\\\)', display: false }, { left: '\\\\[', right: '\\\\]', display: true }], throwOnError: false }); } catch (e) {}
     });
   });
+
+  // 이 페이지는 표지/여러 A4 시트로 나뉜 다른 생성물과 달리 위에서
+  // 아래로 쭉 이어지는 한 장짜리 콘텐츠라, html2canvas로 #keyCapture
+  // 전체를 한 번에 찍은 뒤 PDF는 그 긴 캔버스를 A4 세로 비율 높이만큼씩
+  // 잘라 여러 페이지에 나눠 붙인다(워크시트/채점표 내보내기와 같은
+  // html2canvas+jsPDF 방식, 다만 페이지 단위가 아니라 높이 기준 슬라이싱).
+  var keyCapture = document.getElementById('keyCapture');
+  async function captureEl(el) {
+    return await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+  }
+  var exportFileBase = ${JSON.stringify(title.replace(/[\\\/:*?"<>|]/g, '_') + ' - 정답해설')};
+  var saveImgBtn = document.getElementById('saveImgBtn');
+  var savePdfBtn = document.getElementById('savePdfBtn');
+  if (saveImgBtn) saveImgBtn.addEventListener('click', async function () {
+    saveImgBtn.disabled = true;
+    var orig = saveImgBtn.textContent;
+    saveImgBtn.textContent = '캡처 중...';
+    try {
+      var canvas = await captureEl(keyCapture);
+      var a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = exportFileBase + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert('이미지 저장 실패: ' + e.message);
+    } finally {
+      saveImgBtn.disabled = false;
+      saveImgBtn.textContent = orig;
+    }
+  });
+  if (savePdfBtn) savePdfBtn.addEventListener('click', async function () {
+    savePdfBtn.disabled = true;
+    var orig = savePdfBtn.textContent;
+    savePdfBtn.textContent = '캡처 중...';
+    try {
+      var jsPDFCtor = (window.jspdf && window.jspdf.jsPDF);
+      if (!jsPDFCtor) throw new Error('PDF 라이브러리를 불러오지 못했습니다');
+      var canvas = await captureEl(keyCapture);
+      var pageW = 210;
+      var pxPerMm = canvas.width / pageW;
+      var pagePxH = Math.floor(297 * pxPerMm);
+      var totalPages = Math.max(1, Math.ceil(canvas.height / pagePxH));
+      var pdf = null;
+      for (var i = 0; i < totalPages; i++) {
+        savePdfBtn.textContent = '캡처 중... (' + (i + 1) + '/' + totalPages + ')';
+        var sliceH = Math.min(pagePxH, canvas.height - i * pagePxH);
+        var pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceH;
+        var ctx = pageCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(canvas, 0, i * pagePxH, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        var imgData = pageCanvas.toDataURL('image/jpeg', 0.95);
+        var thisPageH = sliceH / pxPerMm;
+        if (!pdf) {
+          pdf = new jsPDFCtor({ orientation: 'portrait', unit: 'mm', format: [pageW, thisPageH] });
+        } else {
+          pdf.addPage([pageW, thisPageH], 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageW, thisPageH, undefined, 'FAST');
+      }
+      pdf.save(exportFileBase + '.pdf');
+    } catch (e) {
+      alert('PDF 저장 실패: ' + e.message);
+    } finally {
+      savePdfBtn.disabled = false;
+      savePdfBtn.textContent = orig;
+    }
+  });
 });
 <\/script>
 </body></html>`;
@@ -1477,6 +1612,7 @@ document.addEventListener('DOMContentLoaded', () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  return html;
 }
 
 // ---------- 6. 채점 ----------
