@@ -1386,7 +1386,6 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
     const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
     if (!selected.length) throw new Error('선택된 문제가 없습니다.');
     let quickRows = '';
-    let explBlocks = '';
     for (const num of selected) {
       const marker = parsedEntry.markers.get(num);
       const answerXml = extractQuickAnswerXml(marker.blockXml);
@@ -1396,13 +1395,16 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
       // 보이도록 맨 앞에서 한 번만 제거(문두에 있을 때만 지움 — 답 안에
       // 우연히 같은 글자가 있어도 건드리지 않음).
       answerHtml = answerHtml.replace(/^\s*\[정답\]\s*/, '');
-      quickRows += `<div class="qkItem"><span class="qkNum">${num}</span>${answerHtml}</div>`;
 
+      // "여기 버튼을 누르면 해설이 보이게" — 빠른정답표 칸 자체가 곧
+      // 그 문제의 해설을 펼치는 버튼이 되도록, 별도의 해설 목록 없이 답과
+      // 해설을 한 항목(details/summary)으로 합쳤다. 펼쳐지면 그리드 한 칸을
+      // 넘어 한 줄 전체를 차지하도록 CSS에서 처리(.qkItem[open]).
       const explXml = extractEndnoteFullBodyXml(marker.blockXml);
       const explHtml = explXml ? await hwpBodyXmlToHtml(explXml, parsedEntry) : '<p class="hint">(해설 인식 실패)</p>';
-      explBlocks += `<details class="explBlock"><summary class="explNum">${num}번 해설 보기</summary><div class="explBody">${explHtml}</div></details>`;
+      quickRows += `<details class="qkItem"><summary><span class="qkNum">${num}</span>${answerHtml}</summary><div class="qkExpl">${explHtml}</div></details>`;
     }
-    downloadKeyHtml(currentTitle(), quickRows, explBlocks);
+    downloadKeyHtml(currentTitle(), quickRows);
     hint.textContent = `완료 — ${selected.length}문제`;
     hint.className = 'hint ok';
   } catch (e) {
@@ -1414,7 +1416,7 @@ document.getElementById('generateKeyBtn')?.addEventListener('click', async () =>
   }
 });
 
-function downloadKeyHtml(title, quickRows, explBlocks) {
+function downloadKeyHtml(title, quickRows) {
   const html = `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtml(title)} — 정답·해설</title>
@@ -1429,24 +1431,22 @@ body{font-family:'Noto Sans KR',sans-serif;max-width:900px;margin:30px auto;padd
 h1{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:22px;border-bottom:2px solid var(--ink);padding-bottom:6px}
 h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:16px;color:var(--gold);margin-top:28px}
 .qkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:12px 0}
-.qkItem{border:1px solid var(--gold-line);border-radius:4px;padding:6px 8px;background:#fff;text-align:center;font-size:13px}
+.qkItem{border:1px solid var(--gold-line);border-radius:4px;padding:6px 8px;background:#fff;font-size:13px}
+.qkItem summary{cursor:pointer;list-style:none;text-align:center}
+.qkItem summary::-webkit-details-marker{display:none}
+.qkItem summary::after{content:' ▸';color:var(--gold);font-size:10px}
+.qkItem[open] summary::after{content:' ▾'}
+.qkItem[open]{grid-column:1/-1;text-align:left}
 .qkNum{display:block;font-weight:800;color:var(--gold);font-size:11px;margin-bottom:2px}
-.explBlock{border-top:1px solid var(--gold-line);padding:10px 0;font-size:13px}
-.explNum{font-weight:800;color:var(--gold);cursor:pointer;list-style:none;padding:4px 0}
-.explNum::-webkit-details-marker{display:none}
-.explNum::before{content:'▸ ';display:inline-block;transition:transform .15s}
-.explBlock[open] .explNum::before{transform:rotate(90deg)}
-.explBody{margin-top:8px}
+.qkExpl{margin-top:10px;padding-top:10px;border-top:1px solid var(--gold-line);font-size:13px}
 img{max-width:100%;height:auto}
 table{border-collapse:collapse}
 td{border:1px solid var(--gold-line);padding:2px 6px}
 @media print{body{background:#fff}}
 </style></head><body>
 <h1>${escapeHtml(title)} — 정답·해설</h1>
-<h2>빠른정답</h2>
+<h2>빠른정답 <small style="font-family:'Noto Sans KR',sans-serif;font-weight:500;font-size:12px;color:rgba(26,26,26,.55)">— 칸을 클릭하면 그 문제의 해설이 펼쳐집니다</small></h2>
 <div class="qkGrid">${quickRows}</div>
-<h2>해설</h2>
-${explBlocks}
 <script>document.addEventListener('DOMContentLoaded',()=>{renderMathInElement(document.body,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});});<\/script>
 </body></html>`;
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
