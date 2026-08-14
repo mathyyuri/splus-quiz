@@ -47,6 +47,61 @@ function stripCtrlBlocks(runXml) {
   return out;
 }
 
+// "그냥 복붙" — copy the endnote's own first NON-BLANK line (a paragraph
+// inside its <hp:subList>) verbatim, AS REAL CONTENT — including any
+// <hp:equation> objects, not just their stripped text, so a rendered
+// fraction/coordinate pair shows as an actual equation instead of raw
+// script syntax. Returns the paragraph's inner <hp:run> XML (unwrapped —
+// caller embeds it directly into its own paragraph).
+function extractQuickAnswerXml(blockXml) {
+  const enMatch = blockXml.match(/<hp:endNote\s+number=/);
+  if (!enMatch) return '';
+  const subListIdx = blockXml.indexOf('<hp:subList', enMatch.index);
+  if (subListIdx === -1) return '';
+  const closeRe = /<hp:subList\b[^>]*?\/>|<hp:subList\b[^>]*?>|<\/hp:subList>/g;
+  closeRe.lastIndex = subListIdx;
+  let depth = 0, m, subListEnd = -1;
+  while ((m = closeRe.exec(blockXml)) !== null) {
+    const tok = m[0];
+    if (tok.endsWith('/>')) continue;
+    if (tok === '</hp:subList>') { depth--; if (depth === 0) { subListEnd = m.index + tok.length; break; } }
+    else depth++;
+  }
+  if (subListEnd === -1) return '';
+  const subListXml = blockXml.slice(subListIdx, subListEnd);
+  const paras = findTopLevelBlocks(subListXml, 'hp:p');
+  for (const p of paras) {
+    const stripped = stripTags(p.text).replace(/수식입니다\./g, '').replace(/\s+/g, ' ').trim();
+    if (!stripped) continue;
+    const runs = findTopLevelBlocks(p.text, 'hp:run');
+    return runs.map(r => stripAutoNumCtrls(r.text)).join('');
+  }
+  return '';
+}
+
+// Like extractQuickAnswerXml, but returns the endnote's ENTIRE subList
+// content (every paragraph, not just the first non-blank one) — used for
+// the 해설(explanation) export section.
+function extractEndnoteFullBodyXml(blockXml) {
+  const enMatch = blockXml.match(/<hp:endNote\s+number=/);
+  if (!enMatch) return '';
+  const subListIdx = blockXml.indexOf('<hp:subList', enMatch.index);
+  if (subListIdx === -1) return '';
+  const closeRe = /<hp:subList\b[^>]*?\/>|<hp:subList\b[^>]*?>|<\/hp:subList>/g;
+  closeRe.lastIndex = subListIdx;
+  let depth = 0, m, subListEnd = -1;
+  while ((m = closeRe.exec(blockXml)) !== null) {
+    const tok = m[0];
+    if (tok.endsWith('/>')) continue;
+    if (tok === '</hp:subList>') { depth--; if (depth === 0) { subListEnd = m.index + tok.length; break; } }
+    else depth++;
+  }
+  if (subListEnd === -1) return '';
+  const subListXml = blockXml.slice(subListIdx, subListEnd);
+  const paras = findTopLevelBlocks(subListXml, 'hp:p');
+  return paras.map(p => stripAutoNumCtrls(p.text)).join('');
+}
+
 function findAtomBefore(str, pos) {
   let i = pos;
   while (i > 0 && /\s/.test(str[i - 1])) i--;
@@ -822,6 +877,7 @@ document.getElementById('parseBtn').addEventListener('click', async () => {
     await renderQuestionList();
     document.getElementById('qBox').style.display = '';
     document.getElementById('titleBox').style.display = '';
+    document.getElementById('keyBox').style.display = '';
     document.getElementById('gradeBox').style.display = '';
     if (!document.getElementById('issueDate').value) {
       document.getElementById('issueDate').value = new Date().toISOString().slice(0, 10);
@@ -1179,10 +1235,93 @@ document.getElementById('saveToBankBtn').addEventListener('click', async () => {
   }
 });
 
-// ---------- 5. 채점 ----------
-let gradeStudents = []; // [{name,class,cohort}]
-let gradeItems = {}; // name -> {num: 1|2}
+// ---------- 5. 정답·해설 HTML ----------
+document.getElementById('generateKeyBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('generateKeyBtn');
+  const hint = document.getElementById('keyHint');
+  btn.disabled = true;
+  const origText = btn.textContent;
+  try {
+    btn.textContent = '생성 중...';
+    const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
+    if (!selected.length) throw new Error('선택된 문제가 없습니다.');
+    let quickRows = '';
+    let explBlocks = '';
+    for (const num of selected) {
+      const marker = parsedEntry.markers.get(num);
+      const answerXml = extractQuickAnswerXml(marker.blockXml);
+      const answerHtml = answerXml ? await hwpFragmentRunsToHtml(answerXml, parsedEntry) : '<span class="eqFallback">(정답 인식 실패)</span>';
+      quickRows += `<div class="qkItem"><span class="qkNum">${num}</span>${answerHtml}</div>`;
 
+      const explXml = extractEndnoteFullBodyXml(marker.blockXml);
+      const explHtml = explXml ? await hwpBodyXmlToHtml(explXml, parsedEntry) : '<p class="hint">(해설 인식 실패)</p>';
+      explBlocks += `<div class="explBlock"><div class="explNum">${num}번 해설</div>${explHtml}</div>`;
+    }
+    downloadKeyHtml(currentTitle(), quickRows, explBlocks);
+    hint.textContent = `완료 — ${selected.length}문제`;
+    hint.className = 'hint ok';
+  } catch (e) {
+    hint.textContent = '실패: ' + e.message;
+    hint.className = 'hint err';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+});
+
+function downloadKeyHtml(title, quickRows, explBlocks) {
+  const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>${escapeHtml(title)} — 정답·해설</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
+<style>
+:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;}
+*{box-sizing:border-box}
+body{font-family:'Noto Sans KR',sans-serif;max-width:900px;margin:30px auto;padding:0 4vw 60px;background:var(--cream);color:var(--ink);line-height:1.6}
+h1{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:22px;border-bottom:2px solid var(--ink);padding-bottom:6px}
+h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:16px;color:var(--gold);margin-top:28px}
+.qkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:12px 0}
+.qkItem{border:1px solid var(--gold-line);border-radius:4px;padding:6px 8px;background:#fff;text-align:center;font-size:13px}
+.qkNum{display:block;font-weight:800;color:var(--gold);font-size:11px;margin-bottom:2px}
+.explBlock{border-top:1px solid var(--gold-line);padding:14px 0;font-size:13px}
+.explNum{font-weight:800;color:var(--gold);margin-bottom:6px}
+img{max-width:100%;height:auto}
+table{border-collapse:collapse}
+td{border:1px solid var(--gold-line);padding:2px 6px}
+@media print{body{background:#fff}}
+</style></head><body>
+<h1>${escapeHtml(title)} — 정답·해설</h1>
+<h2>빠른정답</h2>
+<div class="qkGrid">${quickRows}</div>
+<h2>해설</h2>
+${explBlocks}
+<script>document.addEventListener('DOMContentLoaded',()=>{renderMathInElement(document.body,{delimiters:[{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});});<\/script>
+</body></html>`;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title} - 정답해설.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------- 6. 채점 ----------
+const GRADE_SYMS = { 0: '-', 1: 'O', 2: 'X', 3: '△' };
+let gradeStudents = []; // [{name,class,cohort}]
+let gradeItems = {}; // name -> {num: 0|1|2|3}
+
+// "명단 불러오기"는 누를 때마다 기존 gradeStudents/gradeItems에 없는
+// 학생만 추가한다(이름 기준 중복 방지) — S반/S+반처럼 같은 클리닉을 같이
+// 푼 여러 반을 순서대로 불러와 한 표에서 채점할 수 있게 하기 위함. 각
+// 학생에게 "이 학생을 어느 반으로 불러왔는지"를 class로 태그해 저장 —
+// saveexamscores는 반(class) 하나당 한 번씩 호출해야 하는 API라서, 나중에
+// 저장할 때 이 태그로 그룹을 다시 나눈다.
 document.getElementById('loadRosterBtn').addEventListener('click', async () => {
   const hint = document.getElementById('gradeHint');
   const cohort = document.getElementById('gradeCohort').value;
@@ -1194,36 +1333,58 @@ document.getElementById('loadRosterBtn').addEventListener('click', async () => {
   hint.className = 'hint';
   try {
     const data = await callGet({ action: 'examroster', key: TEACHER_KEY, cohort, class: className, category, mission });
-    gradeStudents = data.students;
-    gradeItems = {};
-    for (const s of gradeStudents) {
+    let added = 0, skipped = 0;
+    for (const s of data.students) {
+      if (gradeStudents.some(g => g.name === s.name)) { skipped++; continue; }
+      gradeStudents.push({ name: s.name, class: className, cohort });
       gradeItems[s.name] = {};
-      (s.items || []).forEach((v, i) => { if (v === 1 || v === 2) gradeItems[s.name][i + 1] = v; });
+      (s.items || []).forEach((v, i) => { if (v >= 1 && v <= 3) gradeItems[s.name][i + 1] = v; });
+      added++;
     }
     renderGradeGrid();
-    hint.textContent = `${gradeStudents.length}명 불러옴`;
+    hint.textContent = `${added}명 추가됨${skipped ? ` (이미 불러온 ${skipped}명 제외)` : ''} — 전체 ${gradeStudents.length}명`;
     hint.className = 'hint ok';
+    document.getElementById('gradeToolsRow').style.display = gradeStudents.length ? '' : 'none';
     document.getElementById('saveScoresBtn').style.display = gradeStudents.length ? '' : 'none';
   } catch (e) {
     hint.textContent = '실패: ' + e.message;
     hint.className = 'hint err';
-    document.getElementById('gradeArea').innerHTML = '';
-    document.getElementById('saveScoresBtn').style.display = 'none';
   }
+});
+
+document.getElementById('resetRosterBtn').addEventListener('click', () => {
+  gradeStudents = [];
+  gradeItems = {};
+  renderGradeGrid();
+  const hint = document.getElementById('gradeHint');
+  hint.textContent = '명단을 초기화했습니다.';
+  hint.className = 'hint';
+  document.getElementById('gradeToolsRow').style.display = 'none';
+  document.getElementById('saveScoresBtn').style.display = 'none';
+});
+
+document.getElementById('markAllCorrectBtn').addEventListener('click', () => {
+  if (!gradeStudents.length) return;
+  if (!confirm('현재 표에 보이는 모든 칸을 정답(O)으로 표시합니다. 계속할까요?')) return;
+  const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
+  for (const s of gradeStudents) {
+    for (const num of selected) gradeItems[s.name][num] = 1;
+  }
+  renderGradeGrid();
 });
 
 function renderGradeGrid() {
   const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
   const area = document.getElementById('gradeArea');
-  if (!gradeStudents.length) { area.innerHTML = '<p class="hint">해당 반에 학생이 없습니다.</p>'; return; }
-  let html = '<div style="overflow-x:auto"><table class="gradeTbl"><tr><th>이름</th>';
+  if (!gradeStudents.length) { area.innerHTML = '<p class="hint">불러온 학생이 없습니다.</p>'; return; }
+  let html = '<div style="overflow-x:auto"><table class="gradeTbl"><tr><th>이름</th><th>반</th>';
   for (const num of selected) html += `<th>${num}</th>`;
   html += '<th>점수</th></tr>';
   for (const s of gradeStudents) {
-    html += `<tr data-name="${escapeHtml(s.name)}"><td class="nameCell">${escapeHtml(s.name)}</td>`;
+    html += `<tr data-name="${escapeHtml(s.name)}"><td class="nameCell">${escapeHtml(s.name)}</td><td class="classCell">${escapeHtml(s.class || '')}</td>`;
     for (const num of selected) {
       const v = gradeItems[s.name][num] || 0;
-      html += `<td class="gradeCell" data-num="${num}" data-v="${v}">${v === 1 ? 'O' : v === 2 ? 'X' : ''}</td>`;
+      html += `<td class="gradeCell" data-num="${num}" data-v="${v}">${GRADE_SYMS[v]}</td>`;
     }
     html += `<td class="scoreCell" data-role="score">-</td></tr>`;
   }
@@ -1234,10 +1395,10 @@ function renderGradeGrid() {
       const name = cell.closest('tr').dataset.name;
       const num = cell.dataset.num;
       const cur = gradeItems[name][num] || 0;
-      const next = cur === 0 ? 1 : cur === 1 ? 2 : 0;
+      const next = (cur + 1) % 4;
       if (next === 0) delete gradeItems[name][num]; else gradeItems[name][num] = next;
       cell.dataset.v = next;
-      cell.textContent = next === 1 ? 'O' : next === 2 ? 'X' : '';
+      cell.textContent = GRADE_SYMS[next];
       updateScoreCell(cell.closest('tr'), name, selected.length);
     });
   });
@@ -1250,26 +1411,32 @@ function updateScoreCell(tr, name, total) {
   tr.querySelector('[data-role="score"]').textContent = answered ? `${correct}/${answered}` : '-';
 }
 
+// 명단이 여러 반(class)에서 누적됐을 수 있으므로, saveexamscores를 반별로
+// 그룹을 나눠서 그만큼 호출한다(그 API 자체가 한 번에 반 하나만 받음).
 document.getElementById('saveScoresBtn').addEventListener('click', async () => {
   const btn = document.getElementById('saveScoresBtn');
   const hint = document.getElementById('saveHint');
   const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => Number(chk.value));
   const cohort = document.getElementById('gradeCohort').value;
-  const className = document.getElementById('gradeClass').value.trim();
   const category = document.getElementById('gradeCategory').value.trim();
   const mission = document.getElementById('gradeMission').value.trim();
   const maxNum = Math.max(...selected);
-  const entries = gradeStudents.map(s => {
+  const byClass = new Map();
+  for (const s of gradeStudents) {
     const items = [];
     for (let n = 1; n <= maxNum; n++) items.push(gradeItems[s.name][n] || null);
-    return { name: s.name, items, comment: '' };
-  });
+    const cls = s.class || document.getElementById('gradeClass').value.trim();
+    if (!byClass.has(cls)) byClass.set(cls, []);
+    byClass.get(cls).push({ name: s.name, items, comment: '' });
+  }
   btn.disabled = true;
   hint.textContent = '저장 중...';
   hint.className = 'hint';
   try {
-    await callPost({ action: 'saveexamscores', key: TEACHER_KEY, cohort, category, class: className, mission, entries });
-    hint.textContent = '저장 요청을 보냈습니다. (POST 응답은 확인할 수 없으니, 잠시 후 "명단 불러오기"로 다시 확인해보세요.)';
+    for (const [cls, entries] of byClass) {
+      await callPost({ action: 'saveexamscores', key: TEACHER_KEY, cohort, category, class: cls, mission, entries });
+    }
+    hint.textContent = `저장 요청을 보냈습니다 (${[...byClass.keys()].join(', ')}반, 총 ${gradeStudents.length}명). POST 응답은 확인할 수 없으니, 잠시 후 다시 불러와 확인해보세요.`;
     hint.className = 'hint ok';
   } catch (e) {
     hint.textContent = '실패: ' + e.message;
@@ -1278,3 +1445,356 @@ document.getElementById('saveScoresBtn').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+// ---------- 7. 채점 리포트(완수율/단원별 성취도/예상 9모등급) ----------
+// 공통수학1 범위 한정 — 문제 텍스트에 등장하는 단원 고유 용어로 1차 자동
+// 분류(키워드 매칭)한다. hwpx 파일 자체엔 단원 정보가 전혀 없어서 선생님이
+// 매 문제 입력하는 대신 이 방식을 택함 — 완벽하지 않고, 애매한 문항은
+// "미분류"로 남는다(나중에 커리큘럼 전체를 정리할 때 이 목록을 넓히면 됨).
+const UNIT_RULES = [
+  { unit: '행렬과 그 연산', keywords: ['행렬'] },
+  { unit: '순열과 조합', keywords: ['순열', '조합'] },
+  { unit: '경우의 수', keywords: ['경우의 수', '나누어 넣는', '분배하는', '등산로', '색을 칠하는'] },
+  { unit: '복소수와 이차방정식', keywords: ['복소수', '허근', '허수', '켤레복소수', '판별식'] },
+  { unit: '이차방정식과 이차함수', keywords: ['이차함수'] },
+  { unit: '여러 가지 방정식과 부등식', keywords: ['삼차방정식', '사차방정식', '연립방정식', '연립부등식', '부등식', '방정식'] },
+  { unit: '나머지정리와 인수분해', keywords: ['인수분해', '인수정리', '나머지정리', '항등식'] },
+  { unit: '다항식의 연산', keywords: ['다항식', '조립제법', '곱셈 공식', '전개식'] },
+];
+function classifyUnit(rawText) {
+  for (const { unit, keywords } of UNIT_RULES) {
+    if (keywords.some(k => rawText.includes(k))) return unit;
+  }
+  return '미분류';
+}
+
+// 선생님이 정해준 원점수(정답률 %) → 등급 컷.
+function estimateGrade(pct) {
+  if (pct >= 86) return 1;
+  if (pct >= 75) return 2;
+  if (pct >= 60) return 3;
+  if (pct >= 45) return 4;
+  return 5;
+}
+
+function computeStudentStats(student, selectedNums, unitMap) {
+  const total = selectedNums.length;
+  let answered = 0, correct = 0;
+  const unitStats = {};
+  const items = gradeItems[student.name] || {};
+  for (const num of selectedNums) {
+    const v = items[num] || 0;
+    const unit = unitMap[num];
+    if (!unitStats[unit]) unitStats[unit] = { correct: 0, total: 0 };
+    unitStats[unit].total++;
+    if (v !== 0) answered++;
+    if (v === 1) { correct++; unitStats[unit].correct++; }
+  }
+  const completionRate = total ? Math.round((answered / total) * 1000) / 10 : 0;
+  const accuracyRate = total ? Math.round((correct / total) * 1000) / 10 : 0;
+  return { name: student.name, class: student.class, total, answered, correct, completionRate, accuracyRate, grade: estimateGrade(accuracyRate), unitStats };
+}
+
+function computeClassUnitAverage(stats) {
+  const agg = {};
+  for (const st of stats) {
+    for (const [unit, u] of Object.entries(st.unitStats)) {
+      if (!agg[unit]) agg[unit] = { correct: 0, total: 0 };
+      agg[unit].correct += u.correct;
+      agg[unit].total += u.total;
+    }
+  }
+  return agg;
+}
+
+// 학부모님이 보는 안내문이라 존댓말(합니다체)로, 감상평이 아니라 수치
+// 근거를 댄 분석형 문장으로 구성한다. LLM 호출 없이(정적 HTML 도구라 서버
+// API가 따로 없음) 등급/단원 성취도 기반 템플릿으로 1차 생성 — 선생님이
+// 다운로드 전에 직접 검토·수정할 수 있게 UI에서 편집 가능하게 둔다(아래
+// genReportBtn 핸들러의 편집 단계 참고).
+const MATHY_GRADE_MSG = {
+  1: '현재 페이스를 유지한다면 9월 모의고사에서도 좋은 결과가 기대되는 상태입니다.',
+  2: '전반적으로 안정적인 성취를 보이고 있으며, 취약 단원만 보완되면 1등급 진입도 충분히 가능한 수준입니다.',
+  3: '기본 개념은 갖추어져 있으나, 특정 단원에서의 반복적인 실수가 등급 상승의 걸림돌이 되고 있는 것으로 분석됩니다.',
+  4: '기초 개념은 형성되어 있으나 문제 적용 단계에서 아직 흔들리는 모습이 관찰됩니다. 취약 단원 위주의 보충 학습이 필요합니다.',
+  5: '기초 개념 이해부터 다시 점검이 필요한 단계로 판단됩니다. 단원별로 차근차근 다져가는 학습이 우선되어야 합니다.',
+};
+function buildMathyYuriComment(s) {
+  const entries = Object.entries(s.unitStats)
+    .filter(([u, d]) => u !== '미분류' && d.total > 0)
+    .map(([u, d]) => ({ unit: u, pct: Math.round((d.correct / d.total) * 1000) / 10, total: d.total }))
+    .sort((a, b) => b.pct - a.pct);
+  const strong = entries[0];
+  const weak = entries[entries.length - 1];
+  const parts = [];
+  parts.push(`안녕하세요, ${s.name} 학생 학부모님. 이번 클리닉 교재(총 ${s.total}문항) 채점 결과를 분석하여 안내드립니다.`);
+  parts.push(`완수율 ${s.completionRate}%, 정답률 ${s.accuracyRate}%로, 이를 기준으로 환산한 예상 9월 모의고사 등급은 ${s.grade}등급입니다.`);
+  parts.push(MATHY_GRADE_MSG[s.grade]);
+  if (strong && weak && strong !== weak) {
+    parts.push(`단원별로 살펴보면 「${strong.unit}」에서 정답률 ${strong.pct}%로 가장 안정적인 성취를 보였고, 「${weak.unit}」은(는) 정답률 ${weak.pct}%로 상대적으로 보완이 더 필요한 단원으로 확인됩니다.`);
+    parts.push(`9월 모의고사 대비 기간 동안 「${weak.unit}」을(를) 중심으로 복습을 지도하겠습니다.`);
+  } else if (strong) {
+    parts.push(`단원 전반에 걸쳐 고르게 ${strong.pct}% 안팎의 정답률을 보이고 있습니다.`);
+  }
+  parts.push('앞으로도 아이의 학습 상태를 세심하게 살피며 지도하겠습니다. 감사합니다. — Mathy Yuri 드림');
+  return parts.join(' ');
+}
+
+// 리포트는 바로 다운로드하지 않고, 먼저 학생별 자동 코멘트를 만들어 화면에
+// 보여준다 — 학부모님께 그대로 나가는 글이라 선생님이 검토·수정할 기회가
+// 필요해서(요청: "코멘트는 내가 수정 가능하도록 해주고"). "리포트 HTML
+// 다운로드" 버튼을 눌러야 그 시점의 (수정됐을 수도 있는) 텍스트로 최종
+// 생성된다.
+let lastReportStats = null, lastReportUnitMap = null, lastReportQTotal = 0;
+
+document.getElementById('genReportBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('genReportBtn');
+  const hint = document.getElementById('reportHint');
+  if (!gradeStudents.length) { hint.textContent = '채점할 학생이 없습니다. 먼저 명단을 불러오세요.'; hint.className = 'hint err'; return; }
+  btn.disabled = true;
+  const origText = btn.textContent;
+  try {
+    btn.textContent = '분석 중...';
+    const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
+    if (!selected.length) throw new Error('선택된 문제가 없습니다.');
+    const unitMap = {};
+    for (const num of selected) {
+      const marker = parsedEntry.markers.get(num);
+      const noComments = stripCtrlBlocks(marker.blockXml).replace(/<hp:shapeComment>[\s\S]*?<\/hp:shapeComment>/g, '');
+      const raw = decodeXmlEntities(stripTags(stripRectBlocksForRaw(noComments)));
+      unitMap[num] = classifyUnit(raw);
+    }
+    const stats = gradeStudents.map(s => computeStudentStats(s, selected, unitMap));
+    lastReportStats = stats;
+    lastReportUnitMap = unitMap;
+    lastReportQTotal = selected.length;
+    renderCommentEditor(stats);
+    document.getElementById('reportCommentBox').style.display = '';
+    hint.textContent = `분석 완료 — 학생 ${stats.length}명. 아래에서 코멘트를 확인/수정한 뒤 다운로드하세요.`;
+    hint.className = 'hint ok';
+  } catch (e) {
+    hint.textContent = '실패: ' + e.message;
+    hint.className = 'hint err';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+});
+
+function renderCommentEditor(stats) {
+  const area = document.getElementById('reportCommentArea');
+  area.innerHTML = stats.map(s => `
+    <div class="commentItem">
+      <label>${escapeHtml(s.name)}${s.class ? ` (${escapeHtml(s.class)})` : ''} — ${s.grade}등급, 정답률 ${s.accuracyRate}%</label>
+      <textarea data-name="${escapeHtml(s.name)}">${escapeHtml(buildMathyYuriComment(s))}</textarea>
+    </div>`).join('');
+}
+
+document.getElementById('downloadReportBtn').addEventListener('click', () => {
+  if (!lastReportStats) return;
+  const comments = {};
+  document.querySelectorAll('#reportCommentArea textarea').forEach(ta => { comments[ta.dataset.name] = ta.value; });
+  downloadGradeReportHtml(currentTitle(), lastReportStats, lastReportUnitMap, lastReportQTotal, comments);
+});
+
+function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
+  const unitList = [...new Set(Object.values(unitMap))];
+  const classUnitAvg = computeClassUnitAverage(stats);
+  const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  stats.forEach(s => dist[s.grade]++);
+  const classAvgAcc = stats.length ? Math.round(stats.reduce((s, x) => s + x.accuracyRate, 0) / stats.length * 10) / 10 : 0;
+  const classAvgComp = stats.length ? Math.round(stats.reduce((s, x) => s + x.completionRate, 0) / stats.length * 10) / 10 : 0;
+
+  const rankRows = [...stats].sort((a, b) => b.accuracyRate - a.accuracyRate)
+    .map((s, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.class || '')}</td><td>${s.correct}/${s.total}</td><td>${s.accuracyRate}%</td><td>${s.grade}등급</td></tr>`).join('');
+
+  const unitAvgRows = unitList.map(u => {
+    const a = classUnitAvg[u] || { correct: 0, total: 0 };
+    const pct = a.total ? Math.round((a.correct / a.total) * 1000) / 10 : 0;
+    return `<tr><td>${escapeHtml(u)}</td><td>${a.correct}/${a.total}</td><td>${pct}%</td></tr>`;
+  }).join('');
+
+  const adminPage = `
+    <section class="rpSheet">
+      <h1>${escapeHtml(title)} — 채점 관리자 리포트</h1>
+      <div class="rpSummaryGrid">
+        <div class="rpStat"><div class="rpStatLabel">응시 인원</div><div class="rpStatVal">${stats.length}명</div></div>
+        <div class="rpStat"><div class="rpStatLabel">문항 수</div><div class="rpStatVal">${qTotal}문항</div></div>
+        <div class="rpStat"><div class="rpStatLabel">반 평균 완수율</div><div class="rpStatVal">${classAvgComp}%</div></div>
+        <div class="rpStat"><div class="rpStatLabel">반 평균 정답률</div><div class="rpStatVal">${classAvgAcc}%</div></div>
+      </div>
+      <h2>예상 9모등급 분포</h2>
+      <div class="rpDistRow">${[1, 2, 3, 4, 5].map(g => `<div class="rpDistItem"><div class="rpDistGrade">${g}등급</div><div class="rpDistCount">${dist[g]}명</div></div>`).join('')}</div>
+      <h2>단원별 반 평균 성취도 (공통수학1, 자동분류 1차 결과 — 확인 필요)</h2>
+      <table class="rpTbl"><tr><th>단원</th><th>맞은 문항</th><th>정답률</th></tr>${unitAvgRows}</table>
+      <h2>학생별 순위</h2>
+      <table class="rpTbl"><tr><th>순위</th><th>이름</th><th>반</th><th>맞은 개수</th><th>정답률</th><th>예상 등급</th></tr>${rankRows}</table>
+    </section>`;
+
+  const studentPages = stats.map(s => {
+    const rows = unitList.map(u => {
+      const us = s.unitStats[u] || { correct: 0, total: 0 };
+      const pct = us.total ? Math.round((us.correct / us.total) * 1000) / 10 : 0;
+      return `<tr><td>${escapeHtml(u)}</td><td>${us.correct}/${us.total}</td><td>${pct}%</td></tr>`;
+    }).join('');
+    return `
+    <section class="rpSheet rpStudent" data-student="${escapeHtml(s.name)}">
+      <h1>${escapeHtml(s.name)}<small>${escapeHtml(s.class || '')}</small></h1>
+      <div class="rpSummaryGrid">
+        <div class="rpStat"><div class="rpStatLabel">완수율</div><div class="rpStatVal">${s.completionRate}%</div></div>
+        <div class="rpStat"><div class="rpStatLabel">정답률</div><div class="rpStatVal">${s.accuracyRate}%</div></div>
+        <div class="rpStat"><div class="rpStatLabel">맞은 개수</div><div class="rpStatVal">${s.correct}/${s.total}</div></div>
+        <div class="rpStat rpGradeHighlight"><div class="rpStatLabel">예상 9모등급</div><div class="rpStatVal">${s.grade}등급</div></div>
+      </div>
+      <div class="rpComment"><div class="rpCommentTag">Mathy Yuri's Comment</div><p>${escapeHtml((comments && comments[s.name]) || buildMathyYuriComment(s))}</p></div>
+      <h2>단원별 성취도</h2>
+      <table class="rpTbl"><tr><th>단원</th><th>맞은 문항</th><th>정답률</th></tr>${rows}</table>
+      <div class="rpStudentTools noPrint">
+        <button type="button" class="rpBtnSm" data-act="img">이 학생만 이미지로 저장</button>
+        <button type="button" class="rpBtnSm" data-act="html">이 학생만 HTML로 저장</button>
+      </div>
+    </section>`;
+  }).join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>${escapeHtml(title)} — 채점 리포트</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
+<style>
+:root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;--mint-deep:#3E8F79;--pink-deep:#C64E71;}
+*{box-sizing:border-box}
+body{font-family:'Noto Sans KR',sans-serif;background:#c8ded4;margin:0;padding:20px 0 60px;color:var(--ink)}
+.rpSheet{position:relative;max-width:760px;margin:0 auto 20px;background:var(--cream);border-radius:6px;box-shadow:0 2px 14px rgba(0,0,0,.15);padding:26px 30px}
+.rpSheet h1{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:900;font-size:20px;border-bottom:2px solid var(--ink);padding-bottom:8px;margin:0 0 14px}
+.rpSheet h1 small{display:block;font-family:'Noto Sans KR',sans-serif;font-weight:500;font-size:12px;color:rgba(26,26,26,.55);margin-top:2px}
+.rpSheet h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:14px;color:var(--gold);margin:22px 0 8px}
+.rpSummaryGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.rpStat{background:#fff;border:1px solid var(--gold-line);border-radius:5px;padding:10px;text-align:center}
+.rpStatLabel{font-size:11px;color:rgba(26,26,26,.55)}
+.rpStatVal{font-family:'Noto Serif KR',serif;font-weight:800;font-size:18px;margin-top:3px}
+.rpGradeHighlight{background:var(--mint-deep);border-color:var(--mint-deep)}
+.rpGradeHighlight .rpStatLabel{color:rgba(255,255,255,.8)}
+.rpGradeHighlight .rpStatVal{color:#fff}
+.rpDistRow{display:flex;gap:8px}
+.rpDistItem{flex:1;background:#fff;border:1px solid var(--gold-line);border-radius:5px;padding:8px;text-align:center}
+.rpDistGrade{font-size:11px;color:rgba(26,26,26,.55)}
+.rpDistCount{font-weight:800;font-size:15px}
+table.rpTbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+table.rpTbl th,table.rpTbl td{border:1px solid var(--gold-line);padding:5px 8px;text-align:center}
+table.rpTbl th{background:rgba(168,133,63,.14);color:var(--gold);font-weight:700}
+.rpComment{margin-top:18px;background:#fff;border:1px solid var(--gold-line);border-left:4px solid var(--mint-deep);border-radius:5px;padding:12px 16px}
+.rpCommentTag{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:700;font-style:italic;font-size:12px;color:var(--mint-deep);margin-bottom:5px}
+.rpComment p{margin:0;font-size:13px;line-height:1.7}
+.rpStudentTools{margin-top:16px;display:flex;gap:8px}
+.rpBtnSm{font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;padding:7px 12px;border-radius:5px;border:1px solid var(--gold-line);background:#fff;color:var(--ink);cursor:pointer}
+.rpBtnSm:hover:not(:disabled){background:rgba(168,133,63,.12)}
+.rpBtnSm:disabled{opacity:.5;cursor:default}
+.exportBar{position:fixed;top:16px;right:16px;z-index:999;display:flex;gap:8px}
+.exportBar button{background:var(--ink);color:var(--cream);border:none;padding:10px 16px;border-radius:6px;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:12.5px;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.28)}
+.exportBar button:hover:not(:disabled){background:var(--mint-deep)}
+.exportBar button:disabled{opacity:.6;cursor:default}
+@media print{body{background:#fff}.rpSheet{box-shadow:none;page-break-after:always}.noPrint,.exportBar{display:none}}
+</style></head><body>
+<div class="exportBar noPrint">
+  <button type="button" id="rpSaveImgBtn">전체 이미지로 저장</button>
+  <button type="button" id="rpSavePdfBtn">전체 PDF로 저장</button>
+</div>
+${adminPage}
+${studentPages}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var sheets = [...document.querySelectorAll('.rpSheet')];
+  async function captureEl(el) {
+    return await html2canvas(el, {
+      scale: 2, backgroundColor: '#ffffff', useCORS: true,
+      ignoreElements: (node) => node.classList && node.classList.contains('noPrint'),
+    });
+  }
+  var fileBase = ${JSON.stringify(title.replace(/[\\\/:*?"<>|]/g, '_'))};
+
+  var saveImgBtn = document.getElementById('rpSaveImgBtn');
+  var savePdfBtn = document.getElementById('rpSavePdfBtn');
+  if (saveImgBtn) saveImgBtn.addEventListener('click', async function () {
+    saveImgBtn.disabled = true;
+    var orig = saveImgBtn.textContent;
+    saveImgBtn.textContent = '캡처 중...';
+    try {
+      var canvas = await captureEl(sheets[0]);
+      var a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = fileBase + ' - 관리자요약.png';
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { alert('이미지 저장 실패: ' + e.message); }
+    finally { saveImgBtn.disabled = false; saveImgBtn.textContent = orig; }
+  });
+  if (savePdfBtn) savePdfBtn.addEventListener('click', async function () {
+    savePdfBtn.disabled = true;
+    var orig = savePdfBtn.textContent;
+    try {
+      var jsPDFCtor = (window.jspdf && window.jspdf.jsPDF);
+      if (!jsPDFCtor) throw new Error('PDF 라이브러리를 불러오지 못했습니다');
+      var pageW = 210, pdf = null;
+      for (var i = 0; i < sheets.length; i++) {
+        savePdfBtn.textContent = '캡처 중... (' + (i + 1) + '/' + sheets.length + ')';
+        var canvas = await captureEl(sheets[i]);
+        var imgData = canvas.toDataURL('image/jpeg', 0.95);
+        var pageH = pageW * (canvas.height / canvas.width);
+        if (!pdf) pdf = new jsPDFCtor({ orientation: 'portrait', unit: 'mm', format: [pageW, pageH] });
+        else pdf.addPage([pageW, pageH], 'portrait');
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
+      }
+      pdf.save(fileBase + ' - 채점리포트.pdf');
+    } catch (e) { alert('PDF 저장 실패: ' + e.message); }
+    finally { savePdfBtn.disabled = false; savePdfBtn.textContent = orig; }
+  });
+
+  // 학생 1명만 이미지/HTML로 저장 — 문자·카카오톡으로 그 학생 것만 바로
+  // 보낼 수 있게. 이미지는 어느 메신저든 바로 전송되니 "문자로 보내도
+  // 보이는" 용도로는 이미지 쪽이 가장 무난하고, HTML은 그 학생 페이지만
+  // 담긴 독립 파일이 필요할 때 쓴다.
+  var headHtml = document.head.innerHTML;
+  document.querySelectorAll('.rpStudent').forEach(function (section) {
+    var name = section.dataset.student;
+    section.querySelectorAll('.rpBtnSm').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        var act = btn.dataset.act;
+        btn.disabled = true;
+        var orig = btn.textContent;
+        try {
+          if (act === 'img') {
+            btn.textContent = '캡처 중...';
+            var canvas = await captureEl(section);
+            var a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = name + ' - 채점리포트.png';
+            document.body.appendChild(a); a.click(); a.remove();
+          } else {
+            var doc = '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>' + name + ' - 채점리포트</title>' + headHtml + '</head><body style="padding:20px 0">' + section.outerHTML + '</body></html>';
+            var blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a2 = document.createElement('a');
+            a2.href = url; a2.download = name + ' - 채점리포트.html';
+            document.body.appendChild(a2); a2.click(); a2.remove();
+            URL.revokeObjectURL(url);
+          }
+        } catch (e) { alert('저장 실패: ' + e.message); }
+        finally { btn.disabled = false; btn.textContent = orig; }
+      });
+    });
+  });
+});
+<\/script>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${title} - 채점리포트.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
