@@ -58,12 +58,16 @@ button.secondary:hover:not(:disabled) { background: var(--gold-soft); border-col
 .studentChip input { margin: 0; }
 .studentChip:has(input:checked) { background: var(--mint-soft); border-color: var(--mint-deep); color: var(--mint-deep); font-weight: 700; }
 
-table.gradeTbl { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 12.5px; }
-table.gradeTbl th, table.gradeTbl td { border: 1px solid var(--gold-line); padding: 4px 6px; text-align: center; }
+/* 채점은 컴퓨터로만 한다는 전제 — 이 박스만 페이지 본문의 980px 폭
+   제한을 벗어나 뷰포트 폭 대부분을 쓰도록 "full-bleed" 처리해서, 문제가
+   60개든 그 이상이든 되도록 스크롤 없이 한눈에 다 보이게 한다. */
+#gradeBox { width: 96vw; max-width: 1800px; margin-left: 50%; transform: translateX(-50%); }
+table.gradeTbl { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 11.5px; }
+table.gradeTbl th, table.gradeTbl td { border: 1px solid var(--gold-line); padding: 3px 4px; text-align: center; }
 table.gradeTbl th { background: var(--gold-soft); color: var(--gold); font-family: var(--kserif); font-weight: 700; white-space: nowrap; }
 table.gradeTbl td.nameCell { text-align: left; font-weight: 700; white-space: nowrap; background: #fff; position: sticky; left: 0; }
-table.gradeTbl td.classCell { color: rgba(26,26,26,.5); font-size: 11.5px; white-space: nowrap; }
-.gradeCell { cursor: pointer; width: 30px; height: 26px; font-weight: 800; user-select: none; }
+table.gradeTbl td.classCell { color: rgba(26,26,26,.5); font-size: 11px; white-space: nowrap; }
+.gradeCell { cursor: pointer; width: 22px; height: 24px; font-weight: 800; user-select: none; }
 .gradeCell[data-v="0"] { color: rgba(26,26,26,.3); }
 .gradeCell[data-v="1"] { color: var(--mint-deep); background: var(--mint-soft); }
 .gradeCell[data-v="2"] { color: var(--pink-deep); background: var(--pink-soft); }
@@ -77,6 +81,13 @@ table.gradeTbl td.classCell { color: rgba(26,26,26,.5); font-size: 11.5px; white
 .commentItem { margin-bottom: 12px; }
 .commentItem label { display: block; font-weight: 700; font-size: 12.5px; color: var(--gold); margin-bottom: 4px; }
 .commentItem textarea { width: 100%; min-height: 84px; font-family: var(--sans); font-size: 12.5px; line-height: 1.6; padding: 8px; border: 1px solid var(--gold-line); border-radius: 4px; resize: vertical; }
+
+.savedList { max-height: 300px; overflow-y: auto; border: 1px solid var(--gold-line); border-radius: 4px; }
+.savedRow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--gold-line); font-size: 13px; }
+.savedRow:last-child { border-bottom: none; }
+.savedRowTitle { font-weight: 700; }
+.savedRowMeta { color: rgba(26,26,26,.5); font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.savedRow button { padding: 6px 10px; font-size: 11.5px; flex: 0 0 auto; }
 </style>
 </head>
 <body>
@@ -84,6 +95,12 @@ table.gradeTbl td.classCell { color: rgba(26,26,26,.5); font-size: 11.5px; white
 <a href="problembank.html" style="color:var(--gold);font-size:12px;text-decoration:none">&larr; 교재/시험지 관리로</a>
 <h1><span style="color:var(--gold)">MATHY YURI'S</span> CLINIC 교재 생성기</h1>
 <p class="subtitle">시험지를 업로드해서 예쁜 A4 클리닉 교재를 만들고, 바로 채점까지</p>
+
+<div class="box" id="savedBox">
+  <p class="stepTitle">저장된 클리닉 자료</p>
+  <p class="hint">교재를 생성할 때마다 이 브라우저에 자동으로 저장됩니다(이 컴퓨터에서만 보여요 — 문제은행과 달리 팀 전체 공유는 아닙니다). 클릭해서 다시 열어보거나 바로 채점으로 넘어갈 수 있어요.</p>
+  <div class="savedList" id="savedList"></div>
+</div>
 
 <div class="box">
   <p class="stepTitle">1. 시험지 업로드</p>

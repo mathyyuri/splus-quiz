@@ -871,6 +871,12 @@ function arrayBufferToBase64(buf) {
 
 async function renderSavedList() {
   const el = document.getElementById('savedList');
+  // index.html이 이 기능 추가 이전 버전이면 이 요소가 없을 수 있다 — 없으면
+  // 조용히 아무것도 안 하고 빠져나간다(과거엔 여기서 null.innerHTML 접근이
+  // 예외를 던지면서 이 아래에 나오는 업로드/파싱 관련 이벤트 리스너 등록
+  // 전체가 멈춰버려, "파일을 선택해도 불러오기 버튼이 안 눌리는" 원인이 됨
+  // — index.html과 clinicmaker.js는 항상 같이 최신으로 맞춰야 함).
+  if (!el) return;
   el.innerHTML = '<p class="hint" style="padding:10px 4px">불러오는 중...</p>';
   let files;
   try {
@@ -941,7 +947,7 @@ async function loadSavedWorksheet(id, forGrading) {
   }
 }
 
-document.getElementById('savedList').addEventListener('click', async (e) => {
+document.getElementById('savedList')?.addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
   const id = btn.dataset.id;
@@ -1370,7 +1376,7 @@ document.getElementById('saveToBankBtn').addEventListener('click', async () => {
 });
 
 // ---------- 5. 정답·해설 HTML ----------
-document.getElementById('generateKeyBtn').addEventListener('click', async () => {
+document.getElementById('generateKeyBtn')?.addEventListener('click', async () => {
   const btn = document.getElementById('generateKeyBtn');
   const hint = document.getElementById('keyHint');
   btn.disabled = true;
@@ -1486,7 +1492,7 @@ document.getElementById('loadRosterBtn').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('resetRosterBtn').addEventListener('click', () => {
+document.getElementById('resetRosterBtn')?.addEventListener('click', () => {
   gradeStudents = [];
   gradeItems = {};
   renderGradeGrid();
@@ -1497,7 +1503,7 @@ document.getElementById('resetRosterBtn').addEventListener('click', () => {
   document.getElementById('saveScoresBtn').style.display = 'none';
 });
 
-document.getElementById('markAllCorrectBtn').addEventListener('click', () => {
+document.getElementById('markAllCorrectBtn')?.addEventListener('click', () => {
   if (!gradeStudents.length) return;
   if (!confirm('현재 표에 보이는 모든 칸을 정답(O)으로 표시합니다. 계속할까요?')) return;
   const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
@@ -1681,7 +1687,7 @@ function buildMathyYuriComment(s) {
 // 생성된다.
 let lastReportStats = null, lastReportUnitMap = null, lastReportQTotal = 0;
 
-document.getElementById('genReportBtn').addEventListener('click', async () => {
+document.getElementById('genReportBtn')?.addEventListener('click', async () => {
   const btn = document.getElementById('genReportBtn');
   const hint = document.getElementById('reportHint');
   if (!gradeStudents.length) { hint.textContent = '채점할 학생이 없습니다. 먼저 명단을 불러오세요.'; hint.className = 'hint err'; return; }
@@ -1724,7 +1730,7 @@ function renderCommentEditor(stats) {
     </div>`).join('');
 }
 
-document.getElementById('downloadReportBtn').addEventListener('click', () => {
+document.getElementById('downloadReportBtn')?.addEventListener('click', () => {
   if (!lastReportStats) return;
   const comments = {};
   document.querySelectorAll('#reportCommentArea textarea').forEach(ta => { comments[ta.dataset.name] = ta.value; });
