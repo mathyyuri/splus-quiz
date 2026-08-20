@@ -280,6 +280,11 @@ const HWP_EQ_SYMBOLS = {
   LEQ: '\\leq', GEQ: '\\geq', NEQ: '\\neq', THEREFORE: '\\therefore',
   ANGLE: '\\angle', CDOTS: '\\cdots', TRIANGLE: '\\triangle',
   PLUSMINUS: '\\pm', TIMES: '\\times', DIV: '\\div', DEG: '^\\circ',
+  // "∠B = 90^{CIRC}"처럼 각도 표시가 지수(^{...}) 안에 CIRC 키워드로 그대로
+  // 들어오는 경우가 있는데, 여태 DEG만 등록돼 있어서 CIRC는 치환 안 되고
+  // 글자 그대로 남아 있었다(실제 파일로 재현 확인). 이땐 바깥 ^{}가 이미
+  // 있으니 여기선 캐럿 없이 원(\circ)만 매핑.
+  CIRC: '\\circ',
   cdot: '\\cdot', INFTY: '\\infty', infty: '\\infty',
   alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta',
   epsilon: '\\epsilon', zeta: '\\zeta', eta: '\\eta', theta: '\\theta',
@@ -1715,6 +1720,19 @@ const GRADE_SYMS = { 0: '-', 1: 'O', 2: 'X', 3: '△' };
 let gradeStudents = []; // [{name,class,cohort}]
 let gradeItems = {}; // name -> {num: 0|1|2|3}
 
+// 공통문항/개별오답(학생마다 다른 문제)을 섞은 클리닉을 채점할 때, 채점표
+// 어디부터가 개별 구간인지 한눈에 보이게 하는 경계값 — index.html처럼
+// 별도 파일을 안 건드리고 여기서 컨트롤을 직접 만들어 끼워 넣는다(기존
+// select 변환과 같은 방식). 문항 번호 자체는 실제 내용이 학생마다
+// 달라도 항상 1..N으로 채점하므로, 이 경계는 순수히 화면 표시용 —
+// 채점/저장 로직에는 아무 영향 없음.
+const commonBoundaryWrap = document.createElement('label');
+commonBoundaryWrap.className = 'hint';
+commonBoundaryWrap.style.marginLeft = '8px';
+commonBoundaryWrap.innerHTML = '공통문항 경계(이 번호까지 공통, 다음 번호부터 개별오답) <input type="number" id="commonBoundaryInput" value="40" min="0" style="width:56px">';
+document.getElementById('gradeToolsRow')?.prepend(commonBoundaryWrap);
+document.getElementById('commonBoundaryInput')?.addEventListener('input', () => renderGradeGrid());
+
 // "명단 불러오기"는 누를 때마다 기존 gradeStudents/gradeItems에 없는
 // 학생만 추가한다(이름 기준 중복 방지) — S반/S+반처럼 같은 클리닉을 같이
 // 푼 여러 반을 순서대로 불러와 한 표에서 채점할 수 있게 하기 위함. 각
@@ -1808,17 +1826,35 @@ function renderGradeGrid() {
   const area = document.getElementById('gradeArea');
   if (!gradeStudents.length) { area.innerHTML = '<p class="hint">불러온 학생이 없습니다.</p>'; return; }
   ensureEvenWeights(selected);
-  let html = '<div style="overflow-x:auto"><table class="gradeTbl"><tr><th>이름</th><th>반</th>';
-  for (const num of selected) html += `<th>${num}</th>`;
+  // 공통문항/개별오답(학생마다 실제 문제는 다르지만 번호 슬롯은 1..N으로
+  // 동일하게 채점하는) 클리닉을 위한 표시용 경계선 — commonBoundary까지는
+  // "공통", 그 다음 번호부터는 "개별"로 표에 구분해 보여준다. 저장되는
+  // 데이터(문항 번호별 O/X)에는 아무 영향 없이 순수 화면 표시만 다르다.
+  const commonBoundary = Number(document.getElementById('commonBoundaryInput')?.value) || 0;
+  const commonCount = selected.filter(n => Number(n) <= commonBoundary).length;
+  const indivCount = selected.length - commonCount;
+  function colStyle(num) {
+    const n = Number(num);
+    if (commonBoundary <= 0 || commonBoundary >= selected.length) return '';
+    if (n === commonBoundary + 1) return ' style="border-left:3px solid var(--mint-deep)"';
+    if (n > commonBoundary) return ' style="background:rgba(127,200,180,.10)"';
+    return '';
+  }
+  let html = '<div style="overflow-x:auto"><table class="gradeTbl">';
+  if (commonCount && indivCount) {
+    html += `<tr><th colspan="2"></th><th colspan="${commonCount}" style="background:var(--gold-soft)">공통문항 (~${commonBoundary}번)</th><th colspan="${indivCount}" style="background:rgba(127,200,180,.18);border-left:3px solid var(--mint-deep)">개별오답 (${commonBoundary + 1}번~)</th><th></th></tr>`;
+  }
+  html += '<tr><th>이름</th><th>반</th>';
+  for (const num of selected) html += `<th${colStyle(num)}>${num}</th>`;
   html += '<th>점수</th></tr>';
   html += '<tr class="weightRow"><th colspan="2">배점(100점 기준)</th>';
-  for (const num of selected) html += `<th><input type="number" class="weightInput" data-num="${num}" value="${gradeWeights[num]}" step="0.1" min="0"></th>`;
+  for (const num of selected) html += `<th${colStyle(num)}><input type="number" class="weightInput" data-num="${num}" value="${gradeWeights[num]}" step="0.1" min="0"></th>`;
   html += `<th id="weightTotalCell">${weightSum().toFixed(1)}</th></tr>`;
   for (const s of gradeStudents) {
     html += `<tr data-name="${escapeHtml(s.name)}"><td class="nameCell">${escapeHtml(s.name)}</td><td class="classCell">${escapeHtml(s.class || '')}</td>`;
     for (const num of selected) {
       const v = gradeItems[s.name][num] || 0;
-      html += `<td class="gradeCell" data-num="${num}" data-v="${v}">${GRADE_SYMS[v]}</td>`;
+      html += `<td class="gradeCell" data-num="${num}" data-v="${v}"${colStyle(num)}>${GRADE_SYMS[v]}</td>`;
     }
     html += `<td class="scoreCell" data-role="score">-</td></tr>`;
   }
