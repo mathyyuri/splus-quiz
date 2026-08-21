@@ -410,6 +410,40 @@ function extractOrderedChildren(xml, tagNames) {
   return filtered;
 }
 
+// 원본 그림(스캔/캡처된 도형·그래프)의 배경이 거의 항상 흰색으로 통째로
+// 박혀 있어서, 크림/민트색 페이지 위에 놓이면 흰 사각형이 그대로 도드라져
+// 보인다는 피드백 — 실제 픽셀에서 흰 배경만 투명으로 바꿔서, 화면이든
+// html2canvas로 찍는 PDF/이미지 저장이든 어떤 배경색 위에서도 자연스럽게
+// 녹아들게 한다(CSS mix-blend-mode는 html2canvas 캡처에서 지원이 들쭉날쭉
+// 해서, 실제 알파 채널을 굽는 이 방식이 더 확실함).
+function whitenToTransparent(imgEl) {
+  const canvas = document.createElement('canvas');
+  canvas.width = imgEl.naturalWidth;
+  canvas.height = imgEl.naturalHeight;
+  if (!canvas.width || !canvas.height) return null;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(imgEl, 0, 0);
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imgData.data;
+  // 문턱값 근처는 알파를 부드럽게 줄여(anti-alias 경계) 톱니 없이 자연스럽게
+  // 섞이도록 한다.
+  const LOW = 235, HIGH = 255;
+  for (let i = 0; i < d.length; i += 4) {
+    const minV = Math.min(d[i], d[i + 1], d[i + 2]);
+    if (minV >= HIGH) d[i + 3] = 0;
+    else if (minV > LOW) d[i + 3] = Math.round(d[i + 3] * (1 - (minV - LOW) / (HIGH - LOW)));
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
 async function hwpPicToHtml(picXml, entry) {
   const refM = picXml.match(/binaryItemIDRef="([^"]+)"/);
   if (!refM || !entry) return '';
@@ -427,7 +461,13 @@ async function hwpPicToHtml(picXml, entry) {
       sz = orgM ? { w: hwpUnitToMm(Number(orgM[1])), h: hwpUnitToMm(Number(orgM[2])) } : null;
     }
     const sizeAttr = sz ? ` style="max-width:max(${sz.w.toFixed(1)}mm, 1.8em);height:auto"` : '';
-    return `<img class="hwpImg" src="data:${mime};base64,${base64}" alt=""${sizeAttr} data-bin-id="${escapeHtml(refM[1])}" data-bin-href="${escapeHtml(href)}">`;
+    let src = `data:${mime};base64,${base64}`;
+    try {
+      const img = await loadImageFromDataUrl(src);
+      const converted = whitenToTransparent(img);
+      if (converted) src = converted;
+    } catch (e) { /* 변환 실패해도 원본 그림은 그대로 보여줌 */ }
+    return `<img class="hwpImg" src="${src}" alt=""${sizeAttr} data-bin-id="${escapeHtml(refM[1])}" data-bin-href="${escapeHtml(href)}">`;
   } catch (e) { return ''; }
 }
 
@@ -1939,23 +1979,26 @@ document.getElementById('saveScoresBtn').addEventListener('click', async () => {
 // ---------- 7. 채점 리포트(완수율/단원별 성취도/예상 9모등급) ----------
 // 공통수학1 범위 한정 — 문제 텍스트에 등장하는 단원 고유 용어로 1차 자동
 // 분류(키워드 매칭)한다. hwpx 파일 자체엔 단원 정보가 전혀 없어서 선생님이
-// 매 문제 입력하는 대신 이 방식을 택함 — 완벽하지 않고, 애매한 문항은
-// "미분류"로 남는다(나중에 커리큘럼 전체를 정리할 때 이 목록을 넓히면 됨).
+// 매 문제 입력하는 대신 이 방식을 택함 — 완벽하지 않은 휴리스틱이다.
+// 키워드를 최대한 넓게 잡아뒀지만(v2), 그래도 하나도 안 걸리는 문항은
+// "미분류"로 남기지 않고(요청에 따라) 공통수학1에서 가장 범위가 넓은
+// "여러 가지 방정식과 부등식"으로 잠정 배정한다 — 완벽한 분류는 아니니,
+// 이상하게 배정된 문항이 보이면 알려주면 규칙을 더 다듬을 수 있다.
 const UNIT_RULES = [
-  { unit: '행렬과 그 연산', keywords: ['행렬'] },
-  { unit: '순열과 조합', keywords: ['순열', '조합'] },
-  { unit: '경우의 수', keywords: ['경우의 수', '나누어 넣는', '분배하는', '등산로', '색을 칠하는'] },
-  { unit: '복소수와 이차방정식', keywords: ['복소수', '허근', '허수', '켤레복소수', '판별식'] },
-  { unit: '이차방정식과 이차함수', keywords: ['이차함수'] },
-  { unit: '여러 가지 방정식과 부등식', keywords: ['삼차방정식', '사차방정식', '연립방정식', '연립부등식', '부등식', '방정식'] },
-  { unit: '나머지정리와 인수분해', keywords: ['인수분해', '인수정리', '나머지정리', '항등식'] },
-  { unit: '다항식의 연산', keywords: ['다항식', '조립제법', '곱셈 공식', '전개식'] },
+  { unit: '행렬과 그 연산', keywords: ['행렬', '정사각행렬', '단위행렬', '역행렬', '성분', '행과 열'] },
+  { unit: '순열과 조합', keywords: ['순열', '조합', '나열하는', '줄을 세우는', '일렬로'] },
+  { unit: '경우의 수', keywords: ['경우의 수', '합의 법칙', '곱의 법칙', '나누어 넣는', '분배하는', '등산로', '색을 칠하는', '최단 거리', '격자점', '뽑는 경우', '함수의 개수'] },
+  { unit: '복소수와 이차방정식', keywords: ['복소수', '허근', '허수', '켤레복소수', '판별식', '중근', '허수단위'] },
+  { unit: '이차방정식과 이차함수', keywords: ['이차함수', '포물선', '꼭짓점', 'x축과 만나는', '그래프가 x축', '이차식의 그래프', '최댓값과 최솟값'] },
+  { unit: '여러 가지 방정식과 부등식', keywords: ['삼차방정식', '사차방정식', '연립방정식', '연립부등식', '부등식', '방정식', '절댓값', '해의 개수', '근의 개수', '자연수인 해'] },
+  { unit: '나머지정리와 인수분해', keywords: ['인수분해', '인수정리', '나머지정리', '항등식', '몫과 나머지'] },
+  { unit: '다항식의 연산', keywords: ['다항식', '조립제법', '곱셈 공식', '전개식', '차수', '동류항', '다항식의 나눗셈'] },
 ];
 function classifyUnit(rawText) {
   for (const { unit, keywords } of UNIT_RULES) {
     if (keywords.some(k => rawText.includes(k))) return unit;
   }
-  return '미분류';
+  return '여러 가지 방정식과 부등식';
 }
 
 // 선생님이 정해준 원점수(정답률 %) → 등급 컷.
@@ -2098,6 +2141,19 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
   const rankRows = [...stats].sort((a, b) => b.accuracyRate - a.accuracyRate)
     .map((s, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.class || '')}</td><td>${s.correct}/${s.total}</td><td>${s.accuracyRate}%</td><td>${s.grade}등급</td></tr>`).join('');
 
+  // 단원별 성취도를 표(정확한 수치)뿐 아니라 막대그래프로도 보여주기
+  // 위한 데이터 — 표는 그대로 두고 그 위에 그래프를 추가한다(숫자만
+  // 나열된 표보다 한눈에 들어온다는 피드백). 학생당 하나, 관리자 요약에
+  // 하나(반 평균), 각각 캔버스 id로 구분해 그린다.
+  const adminUnitChartData = {
+    labels: unitList,
+    data: unitList.map(u => { const a = classUnitAvg[u] || { correct: 0, total: 0 }; return a.total ? Math.round(a.correct / a.total * 1000) / 10 : null; }),
+  };
+  const studentUnitChartData = stats.map(s => ({
+    labels: unitList,
+    data: unitList.map(u => { const us = s.unitStats[u] || { correct: 0, total: 0 }; return us.total ? Math.round(us.correct / us.total * 1000) / 10 : null; }),
+  }));
+
   const unitAvgRows = unitList.map(u => {
     const a = classUnitAvg[u] || { correct: 0, total: 0 };
     const pct = a.total ? Math.round((a.correct / a.total) * 1000) / 10 : 0;
@@ -2116,12 +2172,13 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
       <h2>예상 9모등급 분포</h2>
       <div class="rpDistRow">${[1, 2, 3, 4, 5].map(g => `<div class="rpDistItem"><div class="rpDistGrade">${g}등급</div><div class="rpDistCount">${dist[g]}명</div></div>`).join('')}</div>
       <h2>단원별 반 평균 성취도 (공통수학1, 자동분류 1차 결과 — 확인 필요)</h2>
+      <div class="rpChartWrap"><canvas id="chart-admin-unit"></canvas></div>
       <table class="rpTbl"><tr><th>단원</th><th>맞은 문항</th><th>정답률</th></tr>${unitAvgRows}</table>
       <h2>학생별 순위</h2>
       <table class="rpTbl"><tr><th>순위</th><th>이름</th><th>반</th><th>맞은 개수</th><th>정답률</th><th>예상 등급</th></tr>${rankRows}</table>
     </section>`;
 
-  const studentPages = stats.map(s => {
+  const studentPages = stats.map((s, si) => {
     const rows = unitList.map(u => {
       const us = s.unitStats[u] || { correct: 0, total: 0 };
       const pct = us.total ? Math.round((us.correct / us.total) * 1000) / 10 : 0;
@@ -2138,6 +2195,7 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
       </div>
       <div class="rpComment"><div class="rpCommentTag">Mathy Yuri's Comment</div><p>${escapeHtml((comments && comments[s.name]) || buildMathyYuriComment(s))}</p></div>
       <h2>단원별 성취도</h2>
+      <div class="rpChartWrap"><canvas id="chart-unit-${si}"></canvas></div>
       <table class="rpTbl"><tr><th>단원</th><th>맞은 문항</th><th>정답률</th></tr>${rows}</table>
       <div class="rpStudentTools noPrint">
         <button type="button" class="rpBtnSm" data-act="img">이 학생만 이미지로 저장</button>
@@ -2152,6 +2210,7 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>
 <style>
 :root{--ink:#1A1A1A;--gold:#A8853F;--gold-line:#E6DCC6;--cream:#D9F0E6;--mint-deep:#3E8F79;--pink-deep:#C64E71;}
 *{box-sizing:border-box}
@@ -2171,6 +2230,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:#c8ded4;margin:0;padding:2
 .rpDistItem{flex:1;background:#fff;border:1px solid var(--gold-line);border-radius:5px;padding:8px;text-align:center}
 .rpDistGrade{font-size:11px;color:rgba(26,26,26,.55)}
 .rpDistCount{font-weight:800;font-size:15px}
+.rpChartWrap{height:190px;margin-top:6px}
 table.rpTbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
 table.rpTbl th,table.rpTbl td{border:1px solid var(--gold-line);padding:5px 8px;text-align:center}
 table.rpTbl th{background:rgba(168,133,63,.14);color:var(--gold);font-weight:700}
@@ -2203,6 +2263,31 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
   var fileBase = ${JSON.stringify(title.replace(/[\\\/:*?"<>|]/g, '_'))};
+
+  // 숫자만 나열된 표보다 한눈에 들어오게, 단원별 정답률을 막대그래프로도
+  // 그린다 — html2canvas는 <canvas>를 그대로 픽셀 복사해오므로 이미지/PDF
+  // 저장에도 그래프가 그대로 찍힌다.
+  var adminUnitChartData = ${JSON.stringify(adminUnitChartData)};
+  var studentUnitChartData = ${JSON.stringify(studentUnitChartData)};
+  function barColor(v) { return v == null ? '#ddd' : v < 50 ? '#C64E71' : v < 75 ? '#A8853F' : '#3E8F79'; }
+  function drawUnitChart(canvasId, chartData) {
+    var el = document.getElementById(canvasId);
+    if (!el || !window.Chart || !chartData.labels.length) return;
+    new Chart(el, {
+      type: 'bar',
+      data: { labels: chartData.labels, datasets: [{ data: chartData.data, backgroundColor: chartData.data.map(barColor), borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, max: 100, ticks: { callback: function (v) { return v + '%'; }, font: { size: 10 } } },
+          x: { ticks: { font: { size: 9 }, maxRotation: 40, minRotation: 0 } },
+        },
+      },
+    });
+  }
+  drawUnitChart('chart-admin-unit', adminUnitChartData);
+  studentUnitChartData.forEach(function (d, i) { drawUnitChart('chart-unit-' + i, d); });
 
   var saveImgBtn = document.getElementById('rpSaveImgBtn');
   var savePdfBtn = document.getElementById('rpSavePdfBtn');
@@ -2245,7 +2330,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // 보이는" 용도로는 이미지 쪽이 가장 무난하고, HTML은 그 학생 페이지만
   // 담긴 독립 파일이 필요할 때 쓴다.
   var headHtml = document.head.innerHTML;
-  document.querySelectorAll('.rpStudent').forEach(function (section) {
+  document.querySelectorAll('.rpStudent').forEach(function (section, sectionIdx) {
     var name = section.dataset.student;
     section.querySelectorAll('.rpBtnSm').forEach(function (btn) {
       btn.addEventListener('click', async function () {
@@ -2261,7 +2346,19 @@ document.addEventListener('DOMContentLoaded', function () {
             a.download = name + ' - 채점리포트.png';
             document.body.appendChild(a); a.click(); a.remove();
           } else {
-            var doc = '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>' + name + ' - 채점리포트</title>' + headHtml + '</head><body style="padding:20px 0">' + section.outerHTML + '</body></html>';
+            // section.outerHTML만으로는 그 학생의 단원별 성취도 그래프를
+            // 그리는 스크립트가 안 딸려온다(그 그래프는 전체 리포트
+            // 페이지의 별도 <script>에서만 그림) — 이 학생 것만 담긴
+            // 독립 파일에서도 그래프가 정상적으로 나오도록 그 학생의
+            // 차트 데이터와 그리는 코드만 따로 인라인으로 끼워 넣는다.
+            var chartData = studentUnitChartData[sectionIdx];
+            var chartScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
+              'function bc(v){return v==null?"#ddd":v<50?"#C64E71":v<75?"#A8853F":"#3E8F79";}' +
+              'var cd=' + JSON.stringify(chartData) + ';' +
+              'var el=document.getElementById("chart-unit-' + sectionIdx + '");' +
+              'if(el&&window.Chart&&cd.labels.length){new Chart(el,{type:"bar",data:{labels:cd.labels,datasets:[{data:cd.data,backgroundColor:cd.data.map(bc),borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+"%";},font:{size:10}}},x:{ticks:{font:{size:9},maxRotation:40,minRotation:0}}}}});}' +
+              '});<\\/script>';
+            var doc = '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>' + name + ' - 채점리포트</title>' + headHtml + '</head><body style="padding:20px 0">' + section.outerHTML + chartScript + '</body></html>';
             var blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
             var url = URL.createObjectURL(blob);
             var a2 = document.createElement('a');
