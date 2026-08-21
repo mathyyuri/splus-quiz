@@ -2001,11 +2001,15 @@ function classifyUnit(rawText) {
   return '여러 가지 방정식과 부등식';
 }
 
-// 선생님이 정해준 원점수(정답률 %) → 등급 컷.
-function estimateGrade(pct) {
+// 선생님이 정해준 원점수(정답률 %) → 등급 컷. 3등급 컷을 60%→70%로
+// 올리고, 정답률만으로는 3등급이어도 완수율(끝까지 푼 비율)이 80%
+// 이하면 4등급으로 낮춘다 — 예상등급이 너무 후하게 나온다는 피드백 반영
+// (못 푼 문제가 20% 넘게 있으면 실전에서는 더 낮게 나올 가능성이 크다고
+// 보는 것).
+function estimateGrade(pct, completionRate) {
   if (pct >= 86) return 1;
   if (pct >= 75) return 2;
-  if (pct >= 60) return 3;
+  if (pct >= 70) return (completionRate != null && completionRate <= 80) ? 4 : 3;
   if (pct >= 45) return 4;
   return 5;
 }
@@ -2025,7 +2029,7 @@ function computeStudentStats(student, selectedNums, unitMap) {
   }
   const completionRate = total ? Math.round((answered / total) * 1000) / 10 : 0;
   const accuracyRate = total ? Math.round((correct / total) * 1000) / 10 : 0;
-  return { name: student.name, class: student.class, total, answered, correct, completionRate, accuracyRate, grade: estimateGrade(accuracyRate), unitStats };
+  return { name: student.name, class: student.class, total, answered, correct, completionRate, accuracyRate, grade: estimateGrade(accuracyRate, completionRate), unitStats };
 }
 
 function computeClassUnitAverage(stats) {
@@ -2186,6 +2190,7 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
     }).join('');
     return `
     <section class="rpSheet rpStudent" data-student="${escapeHtml(s.name)}">
+      <div class="rpTitleTag">${escapeHtml(title)}</div>
       <h1>${escapeHtml(s.name)}<small>${escapeHtml(s.class || '')}</small></h1>
       <div class="rpSummaryGrid">
         <div class="rpStat"><div class="rpStatLabel">완수율</div><div class="rpStatVal">${s.completionRate}%</div></div>
@@ -2236,6 +2241,7 @@ table.rpTbl th,table.rpTbl td{border:1px solid var(--gold-line);padding:5px 8px;
 table.rpTbl th{background:rgba(168,133,63,.14);color:var(--gold);font-weight:700}
 .rpComment{margin-top:18px;background:#fff;border:1px solid var(--gold-line);border-left:4px solid var(--mint-deep);border-radius:5px;padding:12px 16px}
 .rpCommentTag{font-family:'Playfair Display','Noto Serif KR',serif;font-weight:700;font-style:italic;font-size:12px;color:var(--mint-deep);margin-bottom:5px}
+.rpTitleTag{font-size:11px;letter-spacing:.06em;color:var(--gold);font-weight:700;margin-bottom:4px}
 .rpComment p{margin:0;font-size:13px;line-height:1.7}
 .rpStudentTools{margin-top:16px;display:flex;gap:8px}
 .rpBtnSm{font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;padding:7px 12px;border-radius:5px;border:1px solid var(--gold-line);background:#fff;color:var(--ink);cursor:pointer}
