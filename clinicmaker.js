@@ -1990,7 +1990,7 @@ document.getElementById('saveScoresBtn').addEventListener('click', async () => {
   }
 });
 
-// ---------- 7. 채점 리포트(완수율/단원별 성취도/예상 9모등급) ----------
+// ---------- 7. 채점 리포트(완수율/단원별 성취도/강점·약점) ----------
 // 공통수학1 범위 한정 — 문제 텍스트에 등장하는 단원 고유 용어로 1차 자동
 // 분류(키워드 매칭)한다. hwpx 파일 자체엔 단원 정보가 전혀 없어서 선생님이
 // 매 문제 입력하는 대신 이 방식을 택함 — 완벽하지 않은 휴리스틱이다.
@@ -2015,19 +2015,6 @@ function classifyUnit(rawText) {
   return '여러 가지 방정식과 부등식';
 }
 
-// 선생님이 정해준 원점수(정답률 %) → 등급 컷. 3등급 컷을 60%→70%로
-// 올리고, 정답률만으로는 3등급이어도 완수율(끝까지 푼 비율)이 80%
-// 이하면 4등급으로 낮춘다 — 예상등급이 너무 후하게 나온다는 피드백 반영
-// (못 푼 문제가 20% 넘게 있으면 실전에서는 더 낮게 나올 가능성이 크다고
-// 보는 것).
-function estimateGrade(pct, completionRate) {
-  if (pct >= 86) return 1;
-  if (pct >= 75) return 2;
-  if (pct >= 70) return (completionRate != null && completionRate <= 80) ? 4 : 3;
-  if (pct >= 45) return 4;
-  return 5;
-}
-
 function computeStudentStats(student, selectedNums, unitMap) {
   const total = selectedNums.length;
   let answered = 0, correct = 0;
@@ -2043,7 +2030,17 @@ function computeStudentStats(student, selectedNums, unitMap) {
   }
   const completionRate = total ? Math.round((answered / total) * 1000) / 10 : 0;
   const accuracyRate = total ? Math.round((correct / total) * 1000) / 10 : 0;
-  return { name: student.name, class: student.class, total, answered, correct, completionRate, accuracyRate, grade: estimateGrade(accuracyRate, completionRate), unitStats };
+  return { name: student.name, class: student.class, total, answered, correct, completionRate, accuracyRate, unitStats };
+}
+
+// 단원별 성취도 중 가장 강한/약한 단원 — 코멘트 문구와 리포트의 "강점/
+// 보완 필요" 강조 박스에서 공용으로 쓴다.
+function strongWeakUnits(s) {
+  const entries = Object.entries(s.unitStats)
+    .filter(([, d]) => d.total > 0)
+    .map(([u, d]) => ({ unit: u, pct: Math.round((d.correct / d.total) * 1000) / 10, total: d.total }))
+    .sort((a, b) => b.pct - a.pct);
+  return { strong: entries[0] || null, weak: entries[entries.length - 1] || null, entries };
 }
 
 function computeClassUnitAverage(stats) {
@@ -2060,30 +2057,29 @@ function computeClassUnitAverage(stats) {
 
 // 학부모님이 보는 안내문이라 존댓말(합니다체)로, 감상평이 아니라 수치
 // 근거를 댄 분석형 문장으로 구성한다. LLM 호출 없이(정적 HTML 도구라 서버
-// API가 따로 없음) 등급/단원 성취도 기반 템플릿으로 1차 생성 — 선생님이
-// 다운로드 전에 직접 검토·수정할 수 있게 UI에서 편집 가능하게 둔다(아래
-// genReportBtn 핸들러의 편집 단계 참고).
-const MATHY_GRADE_MSG = {
-  1: '현재 페이스를 유지한다면 9월 모의고사에서도 좋은 결과가 기대되는 상태입니다.',
-  2: '전반적으로 안정적인 성취를 보이고 있으며, 취약 단원만 보완되면 1등급 진입도 충분히 가능한 수준입니다.',
-  3: '기본 개념은 갖추어져 있으나, 특정 단원에서의 반복적인 실수가 등급 상승의 걸림돌이 되고 있는 것으로 분석됩니다.',
-  4: '기초 개념은 형성되어 있으나 문제 적용 단계에서 아직 흔들리는 모습이 관찰됩니다. 취약 단원 위주의 보충 학습이 필요합니다.',
-  5: '기초 개념 이해부터 다시 점검이 필요한 단계로 판단됩니다. 단원별로 차근차근 다져가는 학습이 우선되어야 합니다.',
-};
+// API가 따로 없음) 정답률 구간/단원 성취도 기반 템플릿으로 1차 생성 —
+// 선생님이 다운로드 전에 직접 검토·수정할 수 있게 UI에서 편집 가능하게
+// 둔다(아래 genReportBtn 핸들러의 편집 단계 참고). 예상 등급(9모등급
+// 환산)은 요청에 따라 제거하고, 대신 개별 학생의 강점/약점 단원을
+// 강조하는 방향으로 구성한다.
+const ACCURACY_TIER_MSG = [
+  { min: 86, msg: '전반적으로 매우 우수한 성취를 보이고 있는 상태입니다.' },
+  { min: 75, msg: '전반적으로 안정적인 성취를 보이고 있으며, 취약 단원만 보완되면 한 단계 더 높은 성취도 충분히 가능한 수준입니다.' },
+  { min: 60, msg: '기본 개념은 갖추어져 있으나, 특정 단원에서의 반복적인 실수가 있는 것으로 분석됩니다.' },
+  { min: 45, msg: '기초 개념은 형성되어 있으나 문제 적용 단계에서 아직 흔들리는 모습이 관찰됩니다. 취약 단원 위주의 보충 학습이 필요합니다.' },
+  { min: 0, msg: '기초 개념 이해부터 다시 점검이 필요한 단계로 판단됩니다. 단원별로 차근차근 다져가는 학습이 우선되어야 합니다.' },
+];
+function accuracyTierMsg(pct) {
+  return ACCURACY_TIER_MSG.find(t => pct >= t.min).msg;
+}
 function buildMathyYuriComment(s) {
-  const entries = Object.entries(s.unitStats)
-    .filter(([u, d]) => u !== '미분류' && d.total > 0)
-    .map(([u, d]) => ({ unit: u, pct: Math.round((d.correct / d.total) * 1000) / 10, total: d.total }))
-    .sort((a, b) => b.pct - a.pct);
-  const strong = entries[0];
-  const weak = entries[entries.length - 1];
+  const { strong, weak } = strongWeakUnits(s);
   const parts = [];
   parts.push(`안녕하세요, ${s.name} 학생 학부모님. 이번 클리닉 교재(총 ${s.total}문항) 채점 결과를 분석하여 안내드립니다.`);
-  parts.push(`완수율 ${s.completionRate}%, 정답률 ${s.accuracyRate}%로, 이를 기준으로 환산한 예상 9월 모의고사 등급은 ${s.grade}등급입니다.`);
-  parts.push(MATHY_GRADE_MSG[s.grade]);
-  if (strong && weak && strong !== weak) {
-    parts.push(`단원별로 살펴보면 「${strong.unit}」에서 정답률 ${strong.pct}%로 가장 안정적인 성취를 보였고, 「${weak.unit}」은(는) 정답률 ${weak.pct}%로 상대적으로 보완이 더 필요한 단원으로 확인됩니다.`);
-    parts.push(`9월 모의고사 대비 기간 동안 「${weak.unit}」을(를) 중심으로 복습을 지도하겠습니다.`);
+  parts.push(`완수율 ${s.completionRate}%, 정답률 ${s.accuracyRate}%로, ${accuracyTierMsg(s.accuracyRate)}`);
+  if (strong && weak && strong.unit !== weak.unit) {
+    parts.push(`단원별로 살펴보면 강점은 「${strong.unit}」로 정답률 ${strong.pct}%의 안정적인 성취를 보였고, 약점은 「${weak.unit}」로 정답률 ${weak.pct}%에 그쳐 보완이 필요한 것으로 확인됩니다.`);
+    parts.push(`앞으로 「${weak.unit}」을(를) 중심으로 복습을 지도하겠습니다.`);
   } else if (strong) {
     parts.push(`단원 전반에 걸쳐 고르게 ${strong.pct}% 안팎의 정답률을 보이고 있습니다.`);
   }
@@ -2136,7 +2132,7 @@ function renderCommentEditor(stats) {
   const area = document.getElementById('reportCommentArea');
   area.innerHTML = stats.map(s => `
     <div class="commentItem">
-      <label>${escapeHtml(s.name)}${s.class ? ` (${escapeHtml(s.class)})` : ''} — ${s.grade}등급, 정답률 ${s.accuracyRate}%</label>
+      <label>${escapeHtml(s.name)}${s.class ? ` (${escapeHtml(s.class)})` : ''} — 완수율 ${s.completionRate}%, 정답률 ${s.accuracyRate}%</label>
       <textarea data-name="${escapeHtml(s.name)}">${escapeHtml(buildMathyYuriComment(s))}</textarea>
     </div>`).join('');
 }
@@ -2151,13 +2147,11 @@ document.getElementById('downloadReportBtn')?.addEventListener('click', () => {
 function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
   const unitList = [...new Set(Object.values(unitMap))];
   const classUnitAvg = computeClassUnitAverage(stats);
-  const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  stats.forEach(s => dist[s.grade]++);
   const classAvgAcc = stats.length ? Math.round(stats.reduce((s, x) => s + x.accuracyRate, 0) / stats.length * 10) / 10 : 0;
   const classAvgComp = stats.length ? Math.round(stats.reduce((s, x) => s + x.completionRate, 0) / stats.length * 10) / 10 : 0;
 
   const rankRows = [...stats].sort((a, b) => b.accuracyRate - a.accuracyRate)
-    .map((s, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.class || '')}</td><td>${s.correct}/${s.total}</td><td>${s.accuracyRate}%</td><td>${s.grade}등급</td></tr>`).join('');
+    .map((s, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.class || '')}</td><td>${s.correct}/${s.total}</td><td>${s.accuracyRate}%</td></tr>`).join('');
 
   // 단원별 성취도를 표(정확한 수치)뿐 아니라 막대그래프로도 보여주기
   // 위한 데이터 — 표는 그대로 두고 그 위에 그래프를 추가한다(숫자만
@@ -2187,13 +2181,11 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
         <div class="rpStat"><div class="rpStatLabel">반 평균 완수율</div><div class="rpStatVal">${classAvgComp}%</div></div>
         <div class="rpStat"><div class="rpStatLabel">반 평균 정답률</div><div class="rpStatVal">${classAvgAcc}%</div></div>
       </div>
-      <h2>예상 9모등급 분포</h2>
-      <div class="rpDistRow">${[1, 2, 3, 4, 5].map(g => `<div class="rpDistItem"><div class="rpDistGrade">${g}등급</div><div class="rpDistCount">${dist[g]}명</div></div>`).join('')}</div>
       <h2>단원별 반 평균 성취도 (공통수학1, 자동분류 1차 결과 — 확인 필요)</h2>
       <div class="rpChartWrap"><canvas id="chart-admin-unit"></canvas></div>
       <table class="rpTbl"><tr><th>단원</th><th>맞은 문항</th><th>정답률</th></tr>${unitAvgRows}</table>
       <h2>학생별 순위</h2>
-      <table class="rpTbl"><tr><th>순위</th><th>이름</th><th>반</th><th>맞은 개수</th><th>정답률</th><th>예상 등급</th></tr>${rankRows}</table>
+      <table class="rpTbl"><tr><th>순위</th><th>이름</th><th>반</th><th>맞은 개수</th><th>정답률</th></tr>${rankRows}</table>
     </section>`;
 
   const studentPages = stats.map((s, si) => {
@@ -2202,16 +2194,22 @@ function downloadGradeReportHtml(title, stats, unitMap, qTotal, comments) {
       const pct = us.total ? Math.round((us.correct / us.total) * 1000) / 10 : 0;
       return `<tr><td>${escapeHtml(u)}</td><td>${us.correct}/${us.total}</td><td>${pct}%</td></tr>`;
     }).join('');
+    const { strong, weak } = strongWeakUnits(s);
+    const strengthRow = (strong && weak && strong.unit !== weak.unit) ? `
+      <div class="rpStrengthRow">
+        <div class="rpStrengthBox rpStrong"><div class="rpStatLabel">강점 단원</div><div class="rpStatVal">${escapeHtml(strong.unit)}</div><div class="rpStatSub">정답률 ${strong.pct}%</div></div>
+        <div class="rpStrengthBox rpWeak"><div class="rpStatLabel">보완 필요 단원</div><div class="rpStatVal">${escapeHtml(weak.unit)}</div><div class="rpStatSub">정답률 ${weak.pct}%</div></div>
+      </div>` : '';
     return `
     <section class="rpSheet rpStudent" data-student="${escapeHtml(s.name)}">
       <div class="rpTitleTag">${escapeHtml(title)}</div>
       <h1>${escapeHtml(s.name)}<small>${escapeHtml(s.class || '')}</small></h1>
-      <div class="rpSummaryGrid">
+      <div class="rpSummaryGrid rpSummaryGrid3">
         <div class="rpStat"><div class="rpStatLabel">완수율</div><div class="rpStatVal">${s.completionRate}%</div></div>
         <div class="rpStat"><div class="rpStatLabel">정답률</div><div class="rpStatVal">${s.accuracyRate}%</div></div>
         <div class="rpStat"><div class="rpStatLabel">맞은 개수</div><div class="rpStatVal">${s.correct}/${s.total}</div></div>
-        <div class="rpStat rpGradeHighlight"><div class="rpStatLabel">예상 9모등급</div><div class="rpStatVal">${s.grade}등급</div></div>
       </div>
+      ${strengthRow}
       <div class="rpComment"><div class="rpCommentTag">Mathy Yuri's Comment</div><p>${escapeHtml((comments && comments[s.name]) || buildMathyYuriComment(s))}</p></div>
       <h2>단원별 성취도</h2>
       <div class="rpChartWrap"><canvas id="chart-unit-${si}"></canvas></div>
@@ -2239,16 +2237,18 @@ body{font-family:'Noto Sans KR',sans-serif;background:#c8ded4;margin:0;padding:2
 .rpSheet h1 small{display:block;font-family:'Noto Sans KR',sans-serif;font-weight:500;font-size:12px;color:rgba(26,26,26,.55);margin-top:2px}
 .rpSheet h2{font-family:'Noto Serif KR',serif;font-weight:700;font-size:14px;color:var(--gold);margin:22px 0 8px}
 .rpSummaryGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.rpSummaryGrid3{grid-template-columns:repeat(3,1fr)}
 .rpStat{background:#fff;border:1px solid var(--gold-line);border-radius:5px;padding:10px;text-align:center}
 .rpStatLabel{font-size:11px;color:rgba(26,26,26,.55)}
 .rpStatVal{font-family:'Noto Serif KR',serif;font-weight:800;font-size:18px;margin-top:3px}
-.rpGradeHighlight{background:var(--mint-deep);border-color:var(--mint-deep)}
-.rpGradeHighlight .rpStatLabel{color:rgba(255,255,255,.8)}
-.rpGradeHighlight .rpStatVal{color:#fff}
-.rpDistRow{display:flex;gap:8px}
-.rpDistItem{flex:1;background:#fff;border:1px solid var(--gold-line);border-radius:5px;padding:8px;text-align:center}
-.rpDistGrade{font-size:11px;color:rgba(26,26,26,.55)}
-.rpDistCount{font-weight:800;font-size:15px}
+.rpStatSub{font-size:11px;margin-top:3px;opacity:.85}
+.rpStrengthRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.rpStrengthBox{border-radius:5px;padding:10px;text-align:center;border:1px solid}
+.rpStrengthBox .rpStatVal{font-size:15px}
+.rpStrong{background:rgba(62,143,121,.12);border-color:var(--mint-deep)}
+.rpStrong .rpStatLabel,.rpStrong .rpStatSub{color:var(--mint-deep)}
+.rpWeak{background:rgba(198,78,113,.1);border-color:var(--pink-deep)}
+.rpWeak .rpStatLabel,.rpWeak .rpStatSub{color:var(--pink-deep)}
 .rpChartWrap{height:190px;margin-top:6px}
 table.rpTbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
 table.rpTbl th,table.rpTbl td{border:1px solid var(--gold-line);padding:5px 8px;text-align:center}
