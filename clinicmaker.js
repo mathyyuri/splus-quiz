@@ -2017,6 +2017,10 @@ function classifyUnit(rawText) {
 
 function computeStudentStats(student, selectedNums, unitMap) {
   const total = selectedNums.length;
+  // 완수율 = O(맞음) + △(오답완료) 비율 — X(틀렸는데 아직 안 고침)는
+  // "완수"로 안 친다. 그래서 X가 하나라도 남아있으면 완수율이 100%가 될
+  // 수 없다(요청 반영) — 단순히 "칸을 채웠는지"가 아니라 "그 문제를 진짜
+  // 끝냈는지"를 보는 지표로 바뀐 것.
   let answered = 0, correct = 0;
   const unitStats = {};
   const items = gradeItems[student.name] || {};
@@ -2025,7 +2029,7 @@ function computeStudentStats(student, selectedNums, unitMap) {
     const unit = unitMap[num];
     if (!unitStats[unit]) unitStats[unit] = { correct: 0, total: 0 };
     unitStats[unit].total++;
-    if (v !== 0) answered++;
+    if (v === 1 || v === 3) answered++;
     if (v === 1) { correct++; unitStats[unit].correct++; }
   }
   const completionRate = total ? Math.round((answered / total) * 1000) / 10 : 0;
