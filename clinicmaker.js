@@ -285,6 +285,12 @@ const HWP_EQ_SYMBOLS = {
   // 글자 그대로 남아 있었다(실제 파일로 재현 확인). 이땐 바깥 ^{}가 이미
   // 있으니 여기선 캐럿 없이 원(\circ)만 매핑.
   CIRC: '\\circ',
+  // "|2x+a| ≤ 3"의 절댓값 세로줄이 VERT 키워드로 앞뒤에 한 번씩 들어오는데
+  // (LEFT/RIGHT처럼 짝을 이루는 키워드지만 앞뒤 모두 "VERT"로 똑같이 씀)
+  // 여태 등록이 안 돼 있어서 "vert2x+avert"처럼 글자 그대로 남아있었다.
+  // 단순히 세로줄 문자 하나로 치환하면 KaTeX가 알아서 절댓값 기호로
+  // 렌더링한다.
+  VERT: '|',
   cdot: '\\cdot', INFTY: '\\infty', infty: '\\infty',
   alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta',
   epsilon: '\\epsilon', zeta: '\\zeta', eta: '\\eta', theta: '\\theta',
@@ -1800,15 +1806,23 @@ document.getElementById('loadRosterBtn').addEventListener('click', async () => {
     }
     // 이전에 저장할 때 배점을 균등에서 직접 수정했었다면, 그 배점도 O/X
     // 기록과 함께 그대로 복원한다 — 없으면(처음 채점이라 저장 이력이 없으면)
-    // renderGradeGrid가 기본 균등 배점을 채운다.
+    // renderGradeGrid가 기본 균등 배점을 채운다. 배점설정 시트에 이미
+    // 저장돼 있는데도 안 불러와지는 것처럼 보인다는 피드백이 있어서,
+    // 실제로 불러왔는지 아닌지를 힌트 문구에 명시적으로 표시한다(반/
+    // 카테고리/미션명이 저장 당시와 한 글자라도 다르면 서버가 그 조합의
+    // 배점을 못 찾아 조용히 균등배분으로 넘어가는데, 그걸 조용히 넘기지
+    // 않고 바로 알 수 있게 함).
+    let weightsLoaded = false;
     if (Array.isArray(data.weights) && data.weights.length) {
       const selected = [...document.querySelectorAll('.qChk:checked')].map(chk => chk.value);
       gradeWeights = {};
       selected.forEach(num => { gradeWeights[num] = data.weights[Number(num) - 1] || 0; });
       gradeWeightsKey = selected.join(',');
+      weightsLoaded = true;
     }
     renderGradeGrid();
-    hint.textContent = `${added}명 추가됨${skipped ? ` (이미 불러온 ${skipped}명 제외)` : ''} — 전체 ${gradeStudents.length}명`;
+    hint.textContent = `${added}명 추가됨${skipped ? ` (이미 불러온 ${skipped}명 제외)` : ''} — 전체 ${gradeStudents.length}명`
+      + (weightsLoaded ? ' / 저장된 배점을 불러왔습니다.' : ' / 이 반·카테고리·미션명으로 저장된 배점이 없어 균등배분 기본값을 사용합니다(반/카테고리/미션명이 저장 당시와 정확히 같은지 확인해보세요).');
     hint.className = 'hint ok';
     document.getElementById('gradeToolsRow').style.display = gradeStudents.length ? '' : 'none';
     document.getElementById('saveScoresBtn').style.display = gradeStudents.length ? '' : 'none';
