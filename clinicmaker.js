@@ -715,6 +715,20 @@ async function hwpBodyXmlToHtml(xml, entry) {
         continue;
       }
     }
+    // 엔터로 문단이 나뉜 (가)(나)(다)... 조건: 한 문단에 마커가 하나씩만 있어서
+    // formatConditionBox(같은 문단 안에 2개 이상 필요)는 못 잡는다 — 여기서
+    // 연속된 단일-마커 문단들을 모아 하나의 hwpCondBox로 묶는다.
+    const isCondLine = /^\([가나다라마]\)/.test(resolved[j].raw);
+    if (isCondLine) {
+      const start = j;
+      let k = j, count = 0;
+      while (k < resolved.length && /^\([가나다라마]\)/.test(resolved[k].raw)) { k++; count++; }
+      if (count >= 2) {
+        htmlParas.push(`<div class="hwpCondBox">${resolved.slice(start, k).map(it => it.html).join('')}</div>`);
+        j = k;
+        continue;
+      }
+    }
     htmlParas.push(resolved[j].html);
     j++;
   }
